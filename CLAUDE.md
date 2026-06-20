@@ -9,7 +9,15 @@ num painel Next.js na Vercel.
 - `docs/00-handoff.md` — contexto e decisões (ler primeiro)
 - `docs/01-visao-e-arquitetura.md` — arquitetura híbrida + diagrama
 - `docs/02-modelo-de-dados.md` — modelo ER (Postgres)
-- `docs/03-fluxos.md` — fluxos A–F + comandos do bot + questões em aberto
+- `docs/03-fluxos.md` — fluxos A–F + comandos do bot
+- `docs/04-operacoes-pi.md` — estado e operação do Raspberry Pi
+- `docs/tdd/` — estratégia e **contratos de TDD** (testes antes do código)
+
+## Fluxo de TDD entre agentes
+Ver `docs/tdd/00-estrategia-tdd.md`. Um agente escreve os testes (RED) a partir dos
+contratos `docs/tdd/01..03` ANTES de outro agente implementar (GREEN). Cada caso tem
+ID (ex: `FILA-01`) referenciado no nome do teste. Unitários primeiro; integração em
+`docs/tdd/04-plano-integracao.md` (Fase 2).
 
 ## Arquitetura (resumo)
 - **Pi (worker persistente, Docker):** FastAPI + polling Telegram + fila SQLite +
