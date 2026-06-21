@@ -30,7 +30,11 @@ class HistoricoPort(Protocol):
 
 def hash_exato(texto_bruto: str) -> str:
     """Normaliza (trim, colapsa espaços, caixa-baixa) e devolve SHA-256 hex. Contrato: DEDUP-01..03."""
-    raise NotImplementedError("Implementar DEDUP-01..03 (hash_exato)")
+    import hashlib
+    import re
+
+    normalizado = re.sub(r"\s+", " ", texto_bruto.strip()).lower()
+    return hashlib.sha256(normalizado.encode()).hexdigest()
 
 
 class Deduplicador:
@@ -39,7 +43,7 @@ class Deduplicador:
 
     def ja_processado(self, hash: str) -> bool:
         """True se o hash já está no histórico (duplicata exata). Contrato: DEDUP-04/05."""
-        raise NotImplementedError("Implementar DEDUP-04/05")
+        return self._repo.hash_existe(hash)
 
     def soft_match(
         self,
@@ -51,4 +55,11 @@ class Deduplicador:
     ) -> bool:
         """True se existe transação do MESMO usuário+valor+estabelecimento dentro de `janela_min`
         minutos de `data_hora` (comparação numérica de valor, não string). Contrato: DEDUP-06..10."""
-        raise NotImplementedError("Implementar DEDUP-06..10")
+        for t in self._repo.transacoes(usuario_id):
+            if (
+                t.valor == valor
+                and t.estabelecimento == estabelecimento
+                and abs((t.data_hora - data_hora).total_seconds()) <= janela_min * 60
+            ):
+                return True
+        return False
