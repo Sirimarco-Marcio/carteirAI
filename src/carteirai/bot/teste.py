@@ -84,17 +84,21 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def handle_notificacao(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Trata mensagens de texto como notificações bancárias."""
     texto = update.message.text
+    logger.info("── NOTIF recebida: %r", texto)
 
     # 1. Extração via LLM
     llm = resolver_llm("gemini")
     try:
         extraida = await llm.extrair(texto)
     except LLMError as exc:
+        logger.info("   EXTRACAO FALHOU: %s", exc)
         await update.message.reply_text(f"❌ Não consegui extrair: {exc}")
         return
 
     # 2. Auditoria anti-alucinação
     res = auditar(texto, extraida)
+    logger.info("   EXTRAIU: %s", extraida.model_dump())
+    logger.info("   AUDIT:   %s", res.model_dump())
 
     # 3. Valor é rígido — se reprovado, para aqui
     valor_reprovado = any("valor" in f.lower() for f in res.falhas)
@@ -148,6 +152,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
 
     acao, tid_str = data.split(":", 1)
+    logger.info("   CLIQUE: %s tid=%s", acao, tid_str)
 
     if acao == "aprovar":
         await query.edit_message_text("✅ Confirmado")
