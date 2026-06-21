@@ -355,6 +355,49 @@ class FakeCmd:
         self.recebidos.append(update)
 
 
+# ---------------------------------------------------------------------------
+# Fakes para DespachanteComandos (CMD-01..10)
+# ---------------------------------------------------------------------------
+
+
+class FakeConsultas:
+    """Implementa ConsultaFinanceira para testes de DespachanteComandos.
+
+    Args:
+        saldo_val: valor devolvido por saldo().
+        gastos: dict categoria -> Decimal, consultado por gastos_por_categoria().
+        pendentes_list: lista devolvida por pendentes().
+
+    Atributo público:
+        categorias_consultadas: lista de categorias recebidas em gastos_por_categoria().
+    """
+
+    def __init__(
+        self,
+        saldo_val=None,
+        gastos: dict | None = None,
+        pendentes_list: list | None = None,
+    ) -> None:
+        from decimal import Decimal
+
+        self._saldo_val = saldo_val if saldo_val is not None else Decimal("0")
+        self._gastos: dict = gastos or {}
+        self._pendentes_list: list = pendentes_list or []
+        self.categorias_consultadas: list[str] = []
+
+    def saldo(self):
+        return self._saldo_val
+
+    def gastos_por_categoria(self, categoria: str):
+        from decimal import Decimal
+
+        self.categorias_consultadas.append(categoria)
+        return self._gastos.get(categoria, Decimal("0"))
+
+    def pendentes(self) -> list:
+        return list(self._pendentes_list)
+
+
 class FakeLLM(BaseLLM):
     """Fake do BaseLLM para testes unitários.
 
