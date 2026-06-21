@@ -211,6 +211,44 @@ class FakeFaturaRepo:
         ]
 
 
+# ---------------------------------------------------------------------------
+# Fakes para ServicoAprovacao (APROV-01..09)
+# ---------------------------------------------------------------------------
+
+
+class FakeTelegram:
+    """Implementa TelegramPort para testes de ServicoAprovacao.
+
+    Captura todas as chamadas a enviar() na lista pública `enviados`.
+    Cada entrada é uma tupla (chat_id, texto, botoes).
+    """
+
+    def __init__(self) -> None:
+        self.enviados: list[tuple] = []
+
+    def enviar(
+        self, chat_id: str, texto: str, botoes: list[tuple[str, str]] | None = None
+    ) -> None:
+        self.enviados.append((chat_id, texto, botoes))
+
+
+class FakeUsuarioRepo:
+    """Implementa UsuarioRepo para testes de ServicoAprovacao.
+
+    Construído com dict `usuario_id -> chat_id`; suporta lookup direto e inverso.
+    """
+
+    def __init__(self, mapeamento: dict[str, str] | None = None) -> None:
+        self._mapa: dict[str, str] = mapeamento or {}
+        self._inverso: dict[str, str] = {v: k for k, v in self._mapa.items()}
+
+    def chat_id_de(self, usuario_id: str) -> str | None:
+        return self._mapa.get(usuario_id)
+
+    def usuario_de_chat(self, chat_id: str) -> str | None:
+        return self._inverso.get(chat_id)
+
+
 class FakeLLM(BaseLLM):
     """Fake do BaseLLM para testes unitários.
 
