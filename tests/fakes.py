@@ -149,6 +149,68 @@ class FakeTransacaoStore:
         self._transacoes[transacao.id] = transacao
 
 
+# ---------------------------------------------------------------------------
+# Fakes para ServicoFaturas (FAT-01..09)
+# ---------------------------------------------------------------------------
+
+
+class FakeFaturaRepo:
+    """Implementa FaturaRepo para testes de ServicoFaturas.
+
+    Guarda Fatura(s) num dict por id. Gera ids incrementais ("f1", "f2", …).
+    """
+
+    def __init__(self, faturas: list | None = None) -> None:
+        from carteirai.dominio.dtos import Fatura
+
+        self._faturas: dict[str, Fatura] = {}
+        self._contador: int = 0
+        for fatura in (faturas or []):
+            self._faturas[fatura.id] = fatura
+
+    def _proximo_id(self) -> str:
+        self._contador += 1
+        return f"f{self._contador}"
+
+    def buscar(self, fatura_id: str):
+        return self._faturas.get(fatura_id)
+
+    def buscar_aberta(self, conta_id: str, mes: int, ano: int):
+        for fatura in self._faturas.values():
+            if (
+                fatura.conta_id == conta_id
+                and fatura.mes == mes
+                and fatura.ano == ano
+                and fatura.status == "ABERTA"
+            ):
+                return fatura
+        return None
+
+    def criar(self, conta_id: str, mes: int, ano: int):
+        from decimal import Decimal
+        from carteirai.dominio.dtos import Fatura
+
+        fatura = Fatura(
+            id=self._proximo_id(),
+            conta_id=conta_id,
+            mes=mes,
+            ano=ano,
+            valor_total=Decimal("0"),
+            status="ABERTA",
+        )
+        self._faturas[fatura.id] = fatura
+        return fatura
+
+    def atualizar(self, fatura) -> None:
+        self._faturas[fatura.id] = fatura
+
+    def abertas(self, conta_id: str) -> list:
+        return [
+            f for f in self._faturas.values()
+            if f.conta_id == conta_id and f.status == "ABERTA"
+        ]
+
+
 class FakeLLM(BaseLLM):
     """Fake do BaseLLM para testes unitários.
 
