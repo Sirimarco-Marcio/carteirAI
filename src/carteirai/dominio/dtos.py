@@ -116,6 +116,19 @@ class Conta(BaseModel):
     dia_vencimento: int | None = None       # só cartão
 
 
+StatusFatura = Literal["ABERTA", "FECHADA", "PAGA"]
+
+
+class Fatura(BaseModel):
+    id: str
+    conta_id: str            # cartão
+    mes: int
+    ano: int
+    valor_total: Decimal = Decimal("0")
+    vencimento: date | None = None
+    status: StatusFatura = "ABERTA"
+
+
 class Transacao(BaseModel):
     id: str
     conta_id: str
