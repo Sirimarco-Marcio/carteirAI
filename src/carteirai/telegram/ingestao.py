@@ -40,4 +40,14 @@ class RoteadorIngestao:
 
     def processar(self, update: Update) -> ResultadoIngestao:
         """ING-01..04: dedup por update_id → chat conhecido? → comando vs notificação."""
-        raise NotImplementedError("Implementar ING-01..04")
+        if update.update_id in self._vistos:
+            return "DUPLICADO"
+        usuario_id = self._usuarios.usuario_de_chat(update.chat_id)
+        if usuario_id is None:
+            return "IGNORADO"
+        self._vistos.add(update.update_id)
+        if update.texto.startswith("/"):
+            self._cmd.handle(update)
+            return "COMANDO"
+        self._fila.enqueue(update.texto, usuario_id, "notificacao")
+        return "ENFILEIRADO"
