@@ -8,5 +8,5 @@ from carteirai.ia.base_llm import BaseLLM
 
 
 class LocalSSHAdapter(BaseLLM):
-    async def extrair(self, texto: str) -> TransacaoExtraida:
-        raise NotImplementedError("Integração: implementar chamada via SSH ao modelo local")
+    async def extrair(self, texto: str, feedback: list[str] | None = None) -> TransacaoExtraida:
+        raise NotImplementedError("Integração: implementar chamada via SSH ao modelo local (Ollama HTTP)")

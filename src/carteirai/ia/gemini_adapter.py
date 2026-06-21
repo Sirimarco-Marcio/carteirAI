@@ -45,10 +45,12 @@ class GeminiAdapter(BaseLLM):
         self.api_key = api_key
         self.model = model
 
-    async def extrair(self, texto: str) -> TransacaoExtraida:
+    async def extrair(self, texto: str, feedback: list[str] | None = None) -> TransacaoExtraida:
         """Extrai TransacaoExtraida de texto bruto usando a API do Gemini.
 
         Corre a chamada síncrona do SDK em thread separada para não bloquear o loop.
+        `feedback` (reflexão): falhas do auditor da tentativa anterior — injetadas no prompt
+        para o modelo corrigir (ex: "o valor X que você extraiu não aparece no texto; corrija").
         Lança LLMError em qualquer falha (rede, JSON inválido, campo ausente).
         """
         try:
@@ -66,11 +68,19 @@ class GeminiAdapter(BaseLLM):
             system_instruction=_PROMPT_SISTEMA,
         )
 
+        contents = texto
+        if feedback:
+            correcao = "; ".join(feedback)
+            contents = (
+                f"{texto}\n\n[CORREÇÃO] A extração anterior foi reprovada pelo auditor: {correcao}. "
+                f"Releia o texto com atenção e corrija — extraia SOMENTE valores que aparecem literalmente no texto."
+            )
+
         try:
             response = await asyncio.to_thread(
                 client.models.generate_content,
                 model=self.model,
-                contents=texto,
+                contents=contents,
                 config=config,
             )
         except Exception as exc:

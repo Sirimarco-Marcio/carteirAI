@@ -14,8 +14,9 @@ class LLMError(Exception):
 
 class BaseLLM(ABC):
     @abstractmethod
-    async def extrair(self, texto: str) -> TransacaoExtraida:
-        """Extrai uma TransacaoExtraida de texto livre. Pode lançar LLMError."""
+    async def extrair(self, texto: str, feedback: list[str] | None = None) -> TransacaoExtraida:
+        """Extrai uma TransacaoExtraida de texto livre. Pode lançar LLMError.
+        `feedback` (reflexão): falhas do auditor da tentativa anterior, p/ o adapter corrigir."""
         raise NotImplementedError
 
 
