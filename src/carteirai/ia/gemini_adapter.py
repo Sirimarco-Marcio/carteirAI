@@ -32,6 +32,9 @@ O JSON deve ter EXATAMENTE estas chaves:
 - "tipo": "entrada" se recebeu/depositou dinheiro, "saida" se pagou/comprou/enviou
 - "parcelas": número inteiro de parcelas SE o texto indicar (ex: "em 3x", "3 vezes", "parcelado em 6"); caso contrário 1
 
+Para transferências Pix: use categoria "Pix" e coloque em "estabelecimento" o NOME da contraparte
+(quem enviou/recebeu), quando aparecer no texto.
+
 NÃO extraia data — a data é definida pelo sistema, não por você.
 
 Categorias autorizadas: {_CATEGORIAS_STR}

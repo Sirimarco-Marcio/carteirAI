@@ -36,7 +36,7 @@ class Orquestrador:
         transacao_repo: RepoTransacoes,
         llm_principal: BaseLLM,
         llm_fallback: BaseLLM | None = None,
-        max_tentativas: int = 2,
+        max_tentativas: int = 3,  # D8: 1 original + 2 corretivas por provider
     ) -> None:
         self._fila = fila
         self._repo = transacao_repo

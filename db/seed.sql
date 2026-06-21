@@ -13,6 +13,7 @@ INSERT INTO categorias (nome, tipo) VALUES
     ('Vestuário',            'despesa'),
     ('Lanche na rua',        'despesa'),
     ('Presentes',            'despesa'),
+    ('Pix',                  'despesa'),
     ('Transferências',       'despesa'),
     ('Investimentos/Reserva','despesa'),
     ('Outros',               'despesa')

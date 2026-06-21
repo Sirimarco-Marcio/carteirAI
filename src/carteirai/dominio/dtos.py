@@ -22,6 +22,7 @@ CATEGORIAS_AUTORIZADAS: tuple[str, ...] = (
     "Vestuário",
     "Lanche na rua",
     "Presentes",
+    "Pix",
     "Transferências",
     "Investimentos/Reserva",
     "Outros",
