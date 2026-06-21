@@ -59,9 +59,53 @@ class ServicoAprovacao:
     def solicitar_aprovacao(self, transacao: Transacao) -> None:
         """Envia a mensagem de confirmação ao chat do dono. Teclado normal [Sim][Não][Editar];
         se `possivel_duplicata`, mensagem e teclado de duplicata [É a mesma][É nova]. APROV-01,02,03."""
-        raise NotImplementedError("Implementar APROV-01,02,03")
+        chat = self._usuarios.chat_id_de(transacao.usuario_id)
+
+        if transacao.possivel_duplicata:
+            texto = "⚠️ Parece repetida... É a mesma ou uma nova compra?"
+            botoes = [
+                ("É a mesma", f"mesma:{transacao.id}"),
+                ("É nova", f"nova:{transacao.id}"),
+            ]
+        else:
+            texto = (
+                f"Transação de R$ {transacao.valor} em {transacao.estabelecimento} "
+                f"({transacao.categoria}). Confirma?"
+            )
+            botoes = [
+                ("Sim", f"sim:{transacao.id}"),
+                ("Não", f"nao:{transacao.id}"),
+                ("Editar", f"editar:{transacao.id}"),
+            ]
+
+        self._tg.enviar(chat, texto, botoes)
 
     def tratar_callback(self, callback: Callback) -> ResultadoCallback:
         """Trata o clique. Valida que o chat é o dono (APROV-09); se já resolvida → 'já tratada'
         (APROV-08); senão confirma (sim/nova) ou ignora (não/mesma). APROV-04..07."""
-        raise NotImplementedError("Implementar APROV-04..09")
+        t = self._repo.buscar(callback.transacao_id)
+
+        if self._usuarios.chat_id_de(t.usuario_id) != callback.chat_id:
+            return ResultadoCallback(
+                tratado=False,
+                mensagem="não autorizado (callback de chat que não é o dono)",
+            )
+
+        if t.status != "PENDENTE_APROVACAO":
+            return ResultadoCallback(tratado=False, mensagem="já tratada")
+
+        if callback.acao in ("sim", "nova"):
+            self._servico.confirmar(t.id)
+            return ResultadoCallback(tratado=True, status="CONFIRMADA", mensagem="✅ Confirmado")
+
+        if callback.acao in ("nao", "mesma"):
+            self._servico.ignorar(t.id)
+            return ResultadoCallback(tratado=True, status="IGNORADA", mensagem="❌ Ignorado")
+
+        if callback.acao == "editar":
+            return ResultadoCallback(
+                tratado=False,
+                mensagem="edição manual ainda não implementada",
+            )
+
+        return ResultadoCallback(tratado=False, mensagem=f"ação desconhecida: {callback.acao}")
