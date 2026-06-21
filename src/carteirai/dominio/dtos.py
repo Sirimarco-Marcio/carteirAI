@@ -33,7 +33,9 @@ Tipo = Literal["entrada", "saida"]
 
 def normalizar_categoria(categoria: str) -> str:
     """Mapeia a categoria para a lista autorizada; fora dela → 'Outros'. Contrato: LLM-06."""
-    raise NotImplementedError("Implementar LLM-06 (normalizar_categoria)")
+    if categoria in CATEGORIAS_AUTORIZADAS:
+        return categoria
+    return "Outros"
 
 
 class TransacaoExtraida(BaseModel):

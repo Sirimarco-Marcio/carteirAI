@@ -23,4 +23,16 @@ def resolver_llm(provider: str | None = None) -> BaseLLM:
     """Factory: escolhe o adapter por `provider` (ou env LLM_PROVIDER).
     `gemini` -> GeminiAdapter; `local` -> LocalSSHAdapter; outro -> ValueError.
     Contrato: LLM-01..03."""
-    raise NotImplementedError("Implementar LLM-01..03 (resolver_llm)")
+    if provider is None:
+        provider = os.getenv("LLM_PROVIDER")
+
+    if provider == "gemini":
+        from carteirai.ia.gemini_adapter import GeminiAdapter  # evita import circular
+        return GeminiAdapter(api_key=os.getenv("GEMINI_API_KEY", ""))
+    elif provider == "local":
+        from carteirai.ia.local_ssh_adapter import LocalSSHAdapter  # evita import circular
+        return LocalSSHAdapter()
+    else:
+        raise ValueError(
+            f"Provider LLM inválido: {provider!r}. Use 'gemini' ou 'local'."
+        )
