@@ -43,7 +43,7 @@ Para os unitários rodarem sem rede, o agente de testes cria estes fakes:
 
 | Fake | Substitui | Comportamento |
 | --- | --- | --- |
-| `FakeLLM(BaseLLM)` | Gemini/Local | retorna um JSON pré-programado por entrada; permite simular erro/timeout |
+| `FakeLLM(BaseLLM)` | Gemini/Local | retorna resposta(s) pré-programada(s) — uma fixa OU uma **sequência por chamada** (p/ testar reflexão); registra `chamadas` e o último `feedback` recebido; permite simular erro/timeout (`LLMError`) |
 | `FakeFilaRepo` / SQLite `:memory:` | fila SQLite | guarda itens em memória |
 | `FakeTransacaoRepo` | Neon | guarda transações em dict; consulta hash/soft-match |
 | `FakeTelegram` | Bot API | captura mensagens "enviadas" e injeta callbacks |
@@ -74,11 +74,14 @@ TransacaoExtraida:
   parcelas_total: int = 1
 
 ResultadoProcessamento:
-  status: "DUPLICADA|ERRO|PENDENTE_APROVACAO"
+  status: "DUPLICADA|ERRO|PENDENTE_APROVACAO|IGNORADA"
   possivel_duplicata: bool = False
   transacao: TransacaoExtraida | None
   motivo_erro: str | None
+  tentativas: int = 1        # nº de chamadas ao LLM até decidir (observabilidade; reflexão/fallback)
 ```
+> `IGNORADA` = não é transação (auditor reprovou por **ausência de valor** no texto). Processada sem
+> ação e **sem incomodar o humano** — diferente de `ERRO` (que vai pra confirmação/lançamento manual).
 
 ## 7. Índice de contratos
 - `01-contratos-ingestao-ia.md` — fila, dedup, BaseLLM, auditor, orquestração

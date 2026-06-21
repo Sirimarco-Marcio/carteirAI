@@ -53,7 +53,7 @@ class ResultadoAuditoria(BaseModel):
     falhas: list[str] = []
 
 
-StatusProcessamento = Literal["DUPLICADA", "ERRO", "PENDENTE_APROVACAO"]
+StatusProcessamento = Literal["DUPLICADA", "ERRO", "PENDENTE_APROVACAO", "IGNORADA"]
 
 
 class ResultadoProcessamento(BaseModel):
@@ -61,3 +61,4 @@ class ResultadoProcessamento(BaseModel):
     possivel_duplicata: bool = False
     transacao: TransacaoExtraida | None = None
     motivo_erro: str | None = None
+    tentativas: int = 1  # nº de chamadas ao LLM até decidir (reflexão/fallback)

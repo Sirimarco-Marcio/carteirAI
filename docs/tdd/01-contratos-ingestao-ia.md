@@ -59,9 +59,14 @@ Responsabilidade: extrair `TransacaoExtraida` de texto livre. Trocável por env.
 Interface:
 ```
 class BaseLLM(ABC):
-    async def extrair(texto: str) -> TransacaoExtraida   # pode lançar LLMError
+    async def extrair(texto: str, feedback: list[str] | None = None) -> TransacaoExtraida   # pode lançar LLMError
 resolver_llm(provider: "gemini|local") -> BaseLLM        # factory por env LLM_PROVIDER
 ```
+> `feedback` (reflexão): na 1ª tentativa é `None`. Quando o auditor reprova por **divergência**,
+> a orquestração rechama `extrair` passando as falhas do auditor como `feedback`; o adapter as
+> injeta no prompt ("o valor X que você extraiu não aparece no texto; os valores presentes são [...]; corrija").
+> O adapter real (integração) incorpora o feedback no prompt; o `FakeLLM` apenas **registra** o
+> feedback recebido (para os testes de ORQ verificarem que a reflexão aconteceu).
 
 | ID | Given | When | Then |
 | --- | --- | --- | --- |
@@ -103,16 +108,40 @@ Responsabilidade: amarrar dedup → LLM → auditor → decisão de status.
 
 Interface:
 ```
-async processar(item: Item) -> ResultadoProcessamento
+class Orquestrador:
+    def __init__(self, fila, transacao_repo,
+                 llm_principal: BaseLLM, llm_fallback: BaseLLM | None = None,
+                 max_tentativas: int = 2): ...
+    async def processar(item: Item) -> ResultadoProcessamento
 ```
+
+**Laço de extração (reflexão + fallback de provider) — o "agente de leitura":**
+1. **Dedup exato:** `ja_processado(hash)` → se sim, `DUPLICADA` (LLM nunca é chamado).
+2. Para cada provider em `[principal] (+ [fallback] se houver)`:
+   - repetir até `max_tentativas` vezes:
+     - `extraida = await provider.extrair(texto, feedback=falhas)` — na 1ª, `feedback=None`.
+       - se lançar `LLMError` → **abandona este provider** e vai pro próximo (não conta como divergência).
+     - `res = auditar(texto, extraida)`:
+       - **ok** → soft-match? define `possivel_duplicata`; persiste `PENDENTE_APROVACAO`; fila `CONCLUIDO`. **Fim.**
+       - falha por **ausência de número** (não é transação) → `IGNORADA` na hora (**não** retenta, **não** chama outro provider); fila `CONCLUIDO`. **Fim.**
+       - falha por **divergência** (há número, mas o valor não bate) → guarda `res.falhas` como `feedback` e repete (reflexão).
+3. Esgotou todos os providers/tentativas → `ERRO` (`motivo_erro` preenchido), **não persiste** transação; fila `ERRO`; vai pro humano.
+
+> Teto de custo: ≤ `max_tentativas` chamadas por provider. `IGNORADA` e `DUPLICADA` nunca gastam retry.
+> `tentativas` no `ResultadoProcessamento` registra quantas chamadas ao LLM ocorreram (observabilidade).
 
 | ID | Given | When | Then |
 | --- | --- | --- | --- |
 | ORQ-01 | hash já processado | `processar(item)` | status `DUPLICADA`, sem chamar LLM |
-| ORQ-02 | conteúdo novo, LLM ok, auditor ok, sem soft-match | `processar` | `PENDENTE_APROVACAO`, `possivel_duplicata=False` |
+| ORQ-02 | conteúdo novo, LLM ok na 1ª, auditor ok, sem soft-match | `processar` | `PENDENTE_APROVACAO`, `possivel_duplicata=False`, `tentativas==1` |
 | ORQ-03 | conteúdo novo, soft-match positivo | `processar` | `PENDENTE_APROVACAO`, `possivel_duplicata=True` |
-| ORQ-04 | LLM lança `LLMError` | `processar` | status `ERRO`, `motivo_erro` preenchido, **fila não marca CONCLUIDO** |
-| ORQ-05 | auditor reprova | `processar` | status `ERRO`, não persiste transação |
+| ORQ-04 | `LLMError` em TODOS os providers | `processar` | status `ERRO`, `motivo_erro` preenchido, **fila `ERRO`** (não CONCLUIDO) |
+| ORQ-05 | divergência persiste e **esgota** as tentativas em todos os providers | `processar` | status `ERRO`, **não persiste** transação |
 | ORQ-06 | sucesso | `processar` | item da fila marcado `CONCLUIDO` |
 | ORQ-07 | duplicata exata | `processar` | item da fila marcado `DUPLICADA` |
-| ORQ-08 | LLM nunca é chamado quando dedup exato dispara | `processar` | `FakeLLM.chamadas == 0` |
+| ORQ-08 | dedup exato dispara | `processar` | `FakeLLM.chamadas == 0` (LLM nunca chamado) |
+| ORQ-09 | **reflexão**: principal erra o valor na 1ª, acerta na 2ª (com feedback) | `processar` | `PENDENTE_APROVACAO`; `FakeLLM.chamadas == 2`; a 2ª chamada recebeu `feedback` não-vazio com as falhas do auditor |
+| ORQ-10 | **fallback por divergência**: principal sempre diverge (esgota `max_tentativas`), fallback acerta | `processar` | `PENDENTE_APROVACAO`; principal chamado `max_tentativas`×; fallback chamado e usado |
+| ORQ-11 | **fallback por erro**: principal lança `LLMError`, fallback acerta na 1ª | `processar` | `PENDENTE_APROVACAO` via fallback; principal não consome todas as tentativas (abandonado no erro) |
+| ORQ-12 | texto **sem valor** (não é transação) | `processar` | status `IGNORADA`; `FakeLLM.chamadas == 1` (sem retry); fila `CONCLUIDO`; transação não persistida |
+| ORQ-13 | reflexão desligada (`max_tentativas=1`), divergência, sem fallback | `processar` | status `ERRO` na 1ª falha (comportamento legado, sem reflexão) |
