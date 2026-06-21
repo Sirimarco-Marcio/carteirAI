@@ -249,6 +249,80 @@ class FakeUsuarioRepo:
         return self._inverso.get(chat_id)
 
 
+# ---------------------------------------------------------------------------
+# Fakes para ServicoCompetencia (COMP-01..06)
+# ---------------------------------------------------------------------------
+
+
+class FakeTransacaoRepoComp:
+    """Implementa TransacaoRepoComp para testes de ServicoCompetencia.
+
+    Recebe a lista de saídas CONFIRMADAS que devem ser devolvidas por
+    saidas_confirmadas(). O caller é responsável por passar apenas as
+    transações que um repo real devolveria (CONFIRMADA + tipo saida).
+    """
+
+    def __init__(self, saidas: list | None = None) -> None:
+        self._saidas: list = saidas or []
+
+    def saidas_confirmadas(self, competencia_id: str) -> list:
+        return list(self._saidas)
+
+
+class FakeFonteRepo:
+    """Implementa FonteRepo para testes de ServicoCompetencia.
+
+    Devolve todas as fontes em ativas(), opcionalmente filtrando por familia_id
+    se o atributo 'usuario_id' da FonteRenda for tratado como família.
+    Para simplificar os testes unitários, devolve todas sem filtrar.
+    """
+
+    def __init__(self, fontes: list | None = None) -> None:
+        self._fontes: list = fontes or []
+
+    def ativas(self, familia_id: str) -> list:
+        return list(self._fontes)
+
+
+class FakeRegistroDiaRepo:
+    """Implementa RegistroDiaRepo para testes de ServicoCompetencia.
+
+    Recebe um dict mapeando fonte_renda_id -> list[RegistroDia].
+    do_mes() devolve os registros correspondentes (ignorando mes/ano neste fake).
+    """
+
+    def __init__(self, registros: dict | None = None) -> None:
+        self._registros: dict = registros or {}
+
+    def do_mes(self, fonte_renda_id: str, mes: int, ano: int) -> list:
+        return list(self._registros.get(fonte_renda_id, []))
+
+
+class FakeFamiliaRepo:
+    """Implementa FamiliaRepo para testes de ServicoCompetencia.
+
+    Guarda uma única Familia. buscar() a retorna; atualizar_saldo() muta o objeto
+    (usando model_copy) para que o teste possa inspecionar o novo saldo.
+    """
+
+    def __init__(self, familia) -> None:
+        self._familia = familia
+
+    def buscar(self, familia_id: str):
+        return self._familia
+
+    def atualizar_saldo(self, familia_id: str, novo_saldo) -> None:
+        from decimal import Decimal
+        self._familia = self._familia.model_copy(
+            update={"saldo_acumulado": Decimal(str(novo_saldo))}
+        )
+
+    @property
+    def familia(self):
+        """Acesso direto ao objeto mutado — usado nos asserts dos testes."""
+        return self._familia
+
+
 class FakeLLM(BaseLLM):
     """Fake do BaseLLM para testes unitários.
 
