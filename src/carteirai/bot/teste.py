@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import sys
+from decimal import Decimal
 from itertools import count
 
 from dotenv import load_dotenv
@@ -81,6 +82,53 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
+def _fmt_brl(valor: Decimal) -> str:
+    """Formata Decimal como R$ 1.234,56."""
+    return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _teclado_parcelas(tid: int) -> InlineKeyboardMarkup:
+    """Botões para o usuário informar o nº de parcelas de uma compra no crédito."""
+    opcoes = [1, 2, 3, 6, 10, 12]
+    botoes = [
+        InlineKeyboardButton(f"{n}x" if n > 1 else "à vista", callback_data=f"parc:{tid}:{n}")
+        for n in opcoes
+    ]
+    # 3 por linha
+    linhas = [botoes[i:i + 3] for i in range(0, len(botoes), 3)]
+    return InlineKeyboardMarkup(linhas)
+
+
+def _montar_aprovacao(tid: int, extraida) -> tuple[str, InlineKeyboardMarkup]:
+    """Mensagem + teclado de confirmação final, já com info de parcelas no crédito."""
+    linhas = [
+        "💰 *Transação extraída*",
+        f"Valor: {_fmt_brl(extraida.valor)}",
+        f"Tipo: {extraida.tipo}",
+        f"Forma: {extraida.forma}",
+        f"Estabelecimento: {extraida.estabelecimento or '—'}",
+        f"Categoria: {extraida.categoria}",
+        f"Data/hora: {extraida.data_hora.strftime('%d/%m/%Y %H:%M')}",
+    ]
+    if extraida.forma == "credito" and extraida.parcelas_total > 1:
+        n = extraida.parcelas_total
+        por_parcela = (extraida.valor / Decimal(n)).quantize(Decimal("0.01"))
+        linhas.append(
+            f"Parcelas: *{n}x de {_fmt_brl(por_parcela)}* "
+            f"(compromete o limite nas próximas {n} faturas)"
+        )
+    elif extraida.forma == "credito":
+        linhas.append("Parcelas: à vista (1x)")
+
+    linhas.append("\nConfirma esta transação?")
+    teclado = InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ Sim", callback_data=f"aprovar:{tid}"),
+        InlineKeyboardButton("❌ Não", callback_data=f"rejeitar:{tid}"),
+        InlineKeyboardButton("✏️ Editar", callback_data=f"editar:{tid}"),
+    ]])
+    return "\n".join(linhas), teclado
+
+
 async def handle_notificacao(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Trata mensagens de texto como notificações bancárias."""
     texto = update.message.text
@@ -95,50 +143,36 @@ async def handle_notificacao(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text(f"❌ Não consegui extrair: {exc}")
         return
 
-    # 2. Auditoria anti-alucinação
+    # 2. DATA é programática: vem do horário da mensagem (no real, do postedAt da notificação).
+    #    A LLM não decide data/ano.
+    extraida.data_hora = update.message.date
+
+    # 3. Auditoria — só o VALOR é rígido (anti-alucinação). Data não é auditada (é confiável).
     res = auditar(texto, extraida)
     logger.info("   EXTRAIU: %s", extraida.model_dump())
-    logger.info("   AUDIT:   %s", res.model_dump())
-
-    # 3. Valor é rígido — se reprovado, para aqui
     valor_reprovado = any("valor" in f.lower() for f in res.falhas)
+    logger.info("   VALOR_REPROVADO: %s | falhas=%s", valor_reprovado, res.falhas)
     if valor_reprovado:
-        falhas_str = "\n• ".join(res.falhas)
         await update.message.reply_text(
-            f"⚠️ Auditoria reprovou o VALOR (possível alucinação):\n• {falhas_str}"
+            "⚠️ Não parece uma transação (não encontrei o valor no texto). Ignorado."
         )
         return
 
-    # 4. Transação aceita (valor ok; data pode ser inferida) — guardar em memória
+    # 4. Guarda e decide o fluxo
     tid = next(_id_counter)
     _transacoes[tid] = extraida
 
-    # Nota sobre a data
-    data_inferida = any("data" in f.lower() for f in res.falhas)
-    nota_data = " _(data do horário de recebimento)_" if data_inferida else ""
+    # Crédito sem nº de parcelas conhecido → perguntar antes de confirmar
+    if extraida.forma == "credito" and extraida.parcelas_total <= 1:
+        await update.message.reply_text(
+            f"💳 Compra no crédito de {_fmt_brl(extraida.valor)} em "
+            f"{extraida.estabelecimento or 'estabelecimento'}.\n\nEm quantas parcelas?",
+            reply_markup=_teclado_parcelas(tid),
+        )
+        return
 
-    # Formatar resposta
-    valor_fmt = f"R$ {extraida.valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    resposta = (
-        f"💰 *Transação extraída*\n"
-        f"Valor: {valor_fmt}\n"
-        f"Tipo: {extraida.tipo}\n"
-        f"Forma: {extraida.forma}\n"
-        f"Estabelecimento: {extraida.estabelecimento or '—'}\n"
-        f"Categoria: {extraida.categoria}\n"
-        f"Data/hora: {extraida.data_hora.strftime('%d/%m/%Y %H:%M')}{nota_data}\n\n"
-        f"Confirma esta transação?"
-    )
-
-    teclado = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("✅ Sim", callback_data=f"aprovar:{tid}"),
-            InlineKeyboardButton("❌ Não", callback_data=f"rejeitar:{tid}"),
-            InlineKeyboardButton("✏️ Editar", callback_data=f"editar:{tid}"),
-        ]
-    ])
-
-    await update.message.reply_text(resposta, parse_mode="Markdown", reply_markup=teclado)
+    texto_resp, teclado = _montar_aprovacao(tid, extraida)
+    await update.message.reply_text(texto_resp, parse_mode="Markdown", reply_markup=teclado)
 
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -146,13 +180,23 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     query = update.callback_query
     await query.answer()
 
-    data: str = query.data or ""
-    if ":" not in data:
-        await query.edit_message_text("⚠️ Callback desconhecido.")
-        return
+    partes = (query.data or "").split(":")
+    acao = partes[0] if partes else ""
+    logger.info("   CLIQUE: %s", query.data)
 
-    acao, tid_str = data.split(":", 1)
-    logger.info("   CLIQUE: %s tid=%s", acao, tid_str)
+    # Seleção de parcelas → fixa parcelas_total e mostra a confirmação final
+    if acao == "parc" and len(partes) == 3:
+        tid = int(partes[1])
+        n = int(partes[2])
+        extraida = _transacoes.get(tid)
+        if extraida is None:
+            await query.edit_message_text("⚠️ Transação expirou (spike sem persistência).")
+            return
+        extraida.parcelas_total = n
+        logger.info("   PARCELAS definidas: tid=%s n=%s", tid, n)
+        texto_resp, teclado = _montar_aprovacao(tid, extraida)
+        await query.edit_message_text(texto_resp, parse_mode="Markdown", reply_markup=teclado)
+        return
 
     if acao == "aprovar":
         await query.edit_message_text("✅ Confirmado")
@@ -161,7 +205,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     elif acao == "editar":
         await query.edit_message_text("✏️ Edição manual ainda não implementada (spike)")
     else:
-        await query.edit_message_text(f"⚠️ Ação desconhecida: {acao!r}")
+        await query.edit_message_text(f"⚠️ Ação desconhecida: {query.data!r}")
 
 
 # ---------------------------------------------------------------------------

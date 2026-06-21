@@ -30,7 +30,9 @@ O JSON deve ter EXATAMENTE estas chaves:
 - "categoria": uma das categorias autorizadas abaixo
 - "forma": uma de: debito, credito, pix, dinheiro
 - "tipo": "entrada" se recebeu/depositou dinheiro, "saida" se pagou/comprou/enviou
-- "data_iso": data e hora no formato ISO 8601 SE estiver explícita no texto; caso contrário null
+- "parcelas": número inteiro de parcelas SE o texto indicar (ex: "em 3x", "3 vezes", "parcelado em 6"); caso contrário 1
+
+NÃO extraia data — a data é definida pelo sistema, não por você.
 
 Categorias autorizadas: {_CATEGORIAS_STR}
 
@@ -94,16 +96,17 @@ class GeminiAdapter(BaseLLM):
         # --- categoria ---
         categoria = normalizar_categoria(j.get("categoria", ""))
 
-        # --- data_hora ---
-        data_iso = j.get("data_iso")
-        if data_iso:
-            try:
-                data_hora = datetime.fromisoformat(str(data_iso))
-            except (ValueError, TypeError) as exc:
-                # data inválida: usa now() (não é campo rígido)
-                data_hora = datetime.now()
-        else:
-            data_hora = datetime.now()
+        # --- data_hora: NÃO vem da LLM. Placeholder = now(); o pipeline (bot/worker)
+        #     sobrescreve com o horário real do evento (mensagem do chat / postedAt da notificação). ---
+        data_hora = datetime.now()
+
+        # --- parcelas ---
+        try:
+            parcelas_total = int(j.get("parcelas", 1) or 1)
+            if parcelas_total < 1:
+                parcelas_total = 1
+        except (ValueError, TypeError):
+            parcelas_total = 1
 
         # --- forma ---
         formas_validas = {"debito", "credito", "pix", "dinheiro"}
@@ -126,6 +129,7 @@ class GeminiAdapter(BaseLLM):
                 categoria=categoria,
                 forma=forma,  # type: ignore[arg-type]
                 tipo=tipo,  # type: ignore[arg-type]
+                parcelas_total=parcelas_total,
             )
         except Exception as exc:
             raise LLMError(f"Erro ao montar TransacaoExtraida: {exc}") from exc
