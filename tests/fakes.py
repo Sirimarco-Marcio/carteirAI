@@ -102,6 +102,53 @@ class FakeFila:
 _ItemSequencia = Union[TransacaoExtraida, LLMError, Exception]
 
 
+# ---------------------------------------------------------------------------
+# Fakes para ServicoTransacoes (TRANS-01..06)
+# ---------------------------------------------------------------------------
+
+
+class FakeContaRepo:
+    """Implementa ContaRepo para testes de ServicoTransacoes.
+
+    Guarda Conta(s) num dict por id. Permite consulta e atualização de saldo.
+    """
+
+    def __init__(self, contas: list | None = None) -> None:
+        from carteirai.dominio.dtos import Conta
+
+        self._contas: dict[str, Conta] = {}
+        for conta in (contas or []):
+            self._contas[conta.id] = conta
+
+    def buscar(self, conta_id: str):
+        return self._contas.get(conta_id)
+
+    def atualizar_saldo(self, conta_id: str, novo_saldo) -> None:
+        conta = self._contas[conta_id]
+        self._contas[conta_id] = conta.model_copy(update={"saldo_atual": novo_saldo})
+
+
+class FakeTransacaoStore:
+    """Implementa TransacaoRepo (TRANS) para testes de ServicoTransacoes.
+
+    Guarda Transacao(s) num dict por id. Suporta salvar/buscar/atualizar.
+    """
+
+    def __init__(self) -> None:
+        from carteirai.dominio.dtos import Transacao
+
+        self._transacoes: dict[str, Transacao] = {}
+
+    def salvar(self, transacao) -> None:
+        self._transacoes[transacao.id] = transacao
+
+    def buscar(self, transacao_id: str):
+        return self._transacoes.get(transacao_id)
+
+    def atualizar(self, transacao) -> None:
+        self._transacoes[transacao.id] = transacao
+
+
 class FakeLLM(BaseLLM):
     """Fake do BaseLLM para testes unitários.
 
