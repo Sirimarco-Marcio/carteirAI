@@ -14,8 +14,11 @@
    Observados/Ignorados), guarda local com dedup, tela de inspeção com filtros. **Validado no seu
    celular real** (Samsung) — capturou Pix/compras de Itaú, Bradesco, Santander, Mercado Pago.
    Formatos reais salvos em `docs/notificacoes-exemplos.md`.
-2. **Worker — núcleo de IA**: `auditor` (confere valor/data no texto, anti-alucinação),
-   `BaseLLM`/`resolver_llm`, `GeminiAdapter` real, `FakeLLM`. Testes passando.
+2. **Worker — núcleo (TDD, 67 testes verdes)**: `auditor` (anti-alucinação), `BaseLLM`/`resolver_llm`/
+   `GeminiAdapter`; **FILA** (sqlite, durabilidade), **DEDUP** (hash exato + soft-match),
+   **ORQ** (orquestrador com reflexão + fallback de provider), **RENDA** (renda prevista por dia/fonte),
+   **TRANS** (ciclo de vida + saldo), **FAT** (cartão: fatura, parcelamento, pagamento, limite).
+   Tudo no GitHub, fluxo TDD (test→code) por agentes.
 3. **Bot de teste do Telegram** (spike): você cola uma notificação → Gemini extrai → auditor
    confere → bot responde com `[Sim][Não][Editar]`; para crédito, **pergunta as parcelas**.
    Rodável: `PYTHONPATH=src ./.venv/bin/python -m carteirai.bot.teste`.
@@ -54,12 +57,16 @@ db/apply.sh
 ssh-188   # ou ssh-189
 ```
 
-## O que falta (ordem que estou seguindo, em modo autônomo)
-`FILA + DEDUP` (em andamento) → `ORQ` (orquestração com reflexão) → `LocalSSHAdapter` (HTTP do
-Ollama) → **Telegram real** (aprovação/comandos/ingestão) → **regras financeiras** (fatura, renda,
-competência) → **deploy no Pi** (VPN + Docker) + **Neon** → **painel Next.js (Vercel)**.
+## O que falta (modo autônomo — atualizado)
+Já feitos: FILA, DEDUP, ORQ, RENDA, TRANS, FAT (67 testes). **Falta:**
+- **COMP** (fechamento de mês) — **bloqueado pela decisão D15** (de onde vem o previsto por fonte).
+- **Telegram real** (APROV/CMD/ING) — APROV/ING dá pra fazer já; CMD usa os serviços financeiros (prontos).
+- **LocalSSHAdapter** (HTTP do Ollama via SSH) — integração, validar com você / após Pi.
+- **Deploy no Pi** (openfortivpn + Docker) + **Neon** (criar limpo + `db/apply.sh` + camada SQLAlchemy).
+- **Painel Next.js (Vercel)**.
+- Transporte real App→Telegram (canal por pessoa — ver D3).
 
-Detalhe completo do "o que falta" está no histórico da conversa e vai sendo commitado.
+Cada módulo é um commit `test:`/`feat:` no GitHub. Decisões pendentes em `DECISOES-PENDENTES.md`.
 
 ## ⚠️ Importante (segurança)
 Token do bot, connection string do Neon e a chave do Gemini foram colados em texto no chat —
