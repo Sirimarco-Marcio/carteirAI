@@ -100,3 +100,34 @@ class RegistroDia(BaseModel):
     fonte_renda_id: str
     data: date
     status: StatusDia
+
+
+# --- Contas e transações persistidas ---
+TipoConta = Literal["corrente", "credito", "dinheiro"]
+StatusTransacao = Literal["PENDENTE_APROVACAO", "CONFIRMADA", "IGNORADA"]
+
+
+class Conta(BaseModel):
+    id: str
+    tipo: TipoConta
+    saldo_atual: Decimal = Decimal("0")     # corrente/dinheiro
+    limite: Decimal | None = None           # só cartão
+    dia_fechamento: int | None = None       # só cartão
+    dia_vencimento: int | None = None       # só cartão
+
+
+class Transacao(BaseModel):
+    id: str
+    conta_id: str
+    usuario_id: str
+    valor: Decimal
+    data_hora: datetime
+    estabelecimento: str | None = None
+    categoria: str = "Outros"
+    forma: Forma
+    tipo: Tipo
+    status: StatusTransacao = "PENDENTE_APROVACAO"
+    possivel_duplicata: bool = False
+    fatura_id: str | None = None
+    parcela_atual: int = 1
+    parcelas_total: int = 1
