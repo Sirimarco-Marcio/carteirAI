@@ -72,6 +72,12 @@ Você disse que tem alguns. Liste quando quiser que eu faça.
 ### D14 — Feature de localização (backlog)
 Capturar GPS junto da notificação (lembrar onde foi a compra). Prioridade? (está em `docs/backlog.md`).
 
+### D15 — Fechamento de mês (COMP): de onde vem o "previsto por fonte"?
+No `/fechar_mes` eu comparo **previsto × realizado por fonte** (ex: BNDES pagou menos → inconsistência).
+O `previsto por fonte` precisa vir de algum lugar. Opções: (a) recalcular na hora via RENDA (preciso
+dos dias úteis + exceções do mês), ou (b) guardar `renda_prevista_por_fonte` na competência quando
+ela é criada. **[recomendo (b)]**. Deixei o módulo RENDA pronto (testado); COMP fica pendente desta decisão.
+
 ---
 
 ## 🔐 Ações suas (rotação de segredos — quando der)

@@ -3,7 +3,7 @@ Referência: docs/tdd/00-estrategia-tdd.md §6 e docs/00-handoff.md (categorias)
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -77,3 +77,26 @@ class ItemFila(BaseModel):
     status: StatusItem
     criada_em: datetime
     processada_em: datetime | None = None
+
+
+# --- Renda (fontes e dias trabalhados) ---
+TipoCalculo = Literal["fixo_mensal", "por_dia"]
+StatusDia = Literal["presencial", "remoto", "falta"]
+
+
+class FonteRenda(BaseModel):
+    id: str
+    usuario_id: str
+    nome: str
+    tipo_calculo: TipoCalculo
+    valor_base: Decimal = Decimal("0")          # mensal (fixo_mensal) OU por dia (por_dia)
+    valor_alimentacao_dia: Decimal = Decimal("0")
+    valor_transporte_dia: Decimal = Decimal("0")
+    dias_semana: list[int] = []                 # ISO weekday: 1=segunda .. 7=domingo ([1,2,3,4,5]=seg-sex)
+    ativa: bool = True
+
+
+class RegistroDia(BaseModel):
+    fonte_renda_id: str
+    data: date
+    status: StatusDia
