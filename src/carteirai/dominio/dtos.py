@@ -103,6 +103,34 @@ class RegistroDia(BaseModel):
     status: StatusDia
 
 
+# --- Família e competência (fechamento mensal) ---
+class Familia(BaseModel):
+    id: str
+    nome: str = ""
+    saldo_acumulado: Decimal = Decimal("0")
+
+
+class Competencia(BaseModel):
+    id: str
+    familia_id: str
+    mes: int
+    ano: int
+    renda_prevista: Decimal = Decimal("0")
+    renda_realizada: Decimal | None = None
+    total_gasto: Decimal = Decimal("0")
+    sobra: Decimal | None = None
+    status: Literal["ABERTA", "FECHADA"] = "ABERTA"
+
+
+class RelatorioFechamento(BaseModel):
+    renda_prevista: Decimal
+    renda_realizada: Decimal
+    total_gasto: Decimal
+    sobra: Decimal
+    inconsistencias: list[str] = []
+    por_fonte: dict = {}
+
+
 # --- Contas e transações persistidas ---
 TipoConta = Literal["corrente", "credito", "dinheiro"]
 StatusTransacao = Literal["PENDENTE_APROVACAO", "CONFIRMADA", "IGNORADA"]
