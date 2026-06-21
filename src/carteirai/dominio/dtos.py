@@ -62,3 +62,18 @@ class ResultadoProcessamento(BaseModel):
     transacao: TransacaoExtraida | None = None
     motivo_erro: str | None = None
     tentativas: int = 1  # nº de chamadas ao LLM até decidir (reflexão/fallback)
+
+
+# --- Fila de mensagens (durabilidade) ---
+OrigemItem = Literal["notificacao", "manual"]
+StatusItem = Literal["PENDENTE", "PROCESSANDO", "CONCLUIDO", "DUPLICADA", "ERRO"]
+
+
+class ItemFila(BaseModel):
+    id: int
+    texto_bruto: str
+    usuario_id: str
+    origem: OrigemItem
+    status: StatusItem
+    criada_em: datetime
+    processada_em: datetime | None = None
