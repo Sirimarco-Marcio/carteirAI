@@ -39,7 +39,7 @@ Responda somente o JSON, sem markdown, sem explicações.
 
 
 class GeminiAdapter(BaseLLM):
-    def __init__(self, api_key: str, model: str = "gemini-2.0-flash") -> None:
+    def __init__(self, api_key: str, model: str = "gemini-flash-latest") -> None:
         self.api_key = api_key
         self.model = model
 
