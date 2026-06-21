@@ -323,6 +323,38 @@ class FakeFamiliaRepo:
         return self._familia
 
 
+# ---------------------------------------------------------------------------
+# Fakes para RoteadorIngestao (ING-01..04)
+# ---------------------------------------------------------------------------
+
+
+class FakeFilaIngestao:
+    """Implementa FilaPort para testes de RoteadorIngestao.
+
+    Registra todas as chamadas a enqueue() na lista pública `enfileirados`.
+    Cada entrada é uma tupla (texto, usuario_id, origem).
+    """
+
+    def __init__(self) -> None:
+        self.enfileirados: list[tuple] = []
+
+    def enqueue(self, texto_bruto: str, usuario_id: str, origem: str) -> None:
+        self.enfileirados.append((texto_bruto, usuario_id, origem))
+
+
+class FakeCmd:
+    """Implementa CmdHandler para testes de RoteadorIngestao.
+
+    Registra todos os updates recebidos via handle() na lista pública `recebidos`.
+    """
+
+    def __init__(self) -> None:
+        self.recebidos: list = []
+
+    def handle(self, update) -> None:
+        self.recebidos.append(update)
+
+
 class FakeLLM(BaseLLM):
     """Fake do BaseLLM para testes unitários.
 
