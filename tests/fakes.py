@@ -4,6 +4,7 @@ Referência: docs/tdd/00-estrategia-tdd.md §4."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from typing import Union
 
 from carteirai.dedup.dedup import HistoricoPort, TransacaoSimilar
 from carteirai.dominio.dtos import TransacaoExtraida
@@ -42,12 +43,16 @@ class RelogioFake:
 
 
 class FakeTransacaoRepo:
-    """Implementa HistoricoPort para testes unitários de Deduplicador.
+    """Implementa HistoricoPort e RepoTransacoes (ORQ) para testes unitários.
     Referência: docs/tdd/00-estrategia-tdd.md §4 (FakeTransacaoRepo).
 
     Args:
         hashes: conjunto de hashes já processados.
         transacoes_por_usuario: mapeamento usuario_id -> lista de TransacaoSimilar.
+
+    Atributo público:
+        salvos: lista de tuplas (usuario_id, hash, transacao, possivel_duplicata)
+            gravadas via salvar() — usada pelos testes ORQ.
     """
 
     def __init__(
@@ -59,6 +64,7 @@ class FakeTransacaoRepo:
         self._transacoes: dict[str, list[TransacaoSimilar]] = (
             transacoes_por_usuario or {}
         )
+        self.salvos: list[tuple] = []
 
     def hash_existe(self, hash: str) -> bool:
         return hash in self._hashes
@@ -66,13 +72,49 @@ class FakeTransacaoRepo:
     def transacoes(self, usuario_id: str) -> list[TransacaoSimilar]:
         return self._transacoes.get(usuario_id, [])
 
+    def salvar(
+        self,
+        usuario_id: str,
+        hash: str,
+        transacao: TransacaoExtraida,
+        possivel_duplicata: bool,
+    ) -> None:
+        """Registra a transação salva (usada pelos testes ORQ para verificar persistência)."""
+        self.salvos.append((usuario_id, hash, transacao, possivel_duplicata))
+
+
+class FakeFila:
+    """Fake da fila de mensagens para testes ORQ.
+
+    Registra todas as chamadas a marcar() na lista pública `marcacoes`.
+    Cada entrada é uma tupla (item_id, status).
+    """
+
+    def __init__(self) -> None:
+        self.marcacoes: list[tuple] = []
+
+    def marcar(self, item_id: int, status: str) -> None:
+        """Registra a marcação de status de um item da fila."""
+        self.marcacoes.append((item_id, status))
+
+
+# Tipo para itens da sequência do FakeLLM: retorna transação ou levanta erro.
+_ItemSequencia = Union[TransacaoExtraida, LLMError, Exception]
+
 
 class FakeLLM(BaseLLM):
     """Fake do BaseLLM para testes unitários.
 
-    Modos:
-    - programado com TransacaoExtraida: extrair() retorna a transação e incrementa chamadas.
-    - modo_erro=True: extrair() lança LLMError (simula timeout/falha de rede).
+    Modos (exclusivos — `respostas` tem prioridade sobre os demais):
+    - `respostas`: sequência de respostas; cada extrair() consome o próximo item.
+        - TransacaoExtraida → retorna o valor;
+        - LLMError ou Exception → levanta a exceção.
+    - `transacao` + `modo_erro=False`: retorna sempre a mesma TransacaoExtraida.
+    - `modo_erro=True`: levanta sempre LLMError (simula timeout/falha de rede).
+
+    Atributos públicos:
+        chamadas: contador de chamadas a extrair().
+        ultimo_feedback: último valor de `feedback` recebido (None na 1ª chamada).
     """
 
     def __init__(
@@ -80,14 +122,27 @@ class FakeLLM(BaseLLM):
         transacao: TransacaoExtraida | None = None,
         modo_erro: bool = False,
         mensagem_erro: str = "LLM indisponível (fake)",
+        respostas: list[_ItemSequencia] | None = None,
     ) -> None:
         self._transacao = transacao
         self._modo_erro = modo_erro
         self._mensagem_erro = mensagem_erro
+        self._respostas: list[_ItemSequencia] = list(respostas) if respostas else []
         self.chamadas: int = 0
+        self.ultimo_feedback: list[str] | None = None
 
-    async def extrair(self, texto: str) -> TransacaoExtraida:
+    async def extrair(self, texto: str, feedback: list[str] | None = None) -> TransacaoExtraida:
         self.chamadas += 1
+        self.ultimo_feedback = feedback
+
+        # Modo sequência: consome o próximo item da lista.
+        if self._respostas:
+            item = self._respostas.pop(0)
+            if isinstance(item, Exception):
+                raise item
+            return item  # type: ignore[return-value]
+
+        # Modo legado: erro fixo ou transação fixa.
         if self._modo_erro:
             raise LLMError(self._mensagem_erro)
         if self._transacao is None:
