@@ -8,10 +8,79 @@ Um dia só conta para a fonte se `data.isoweekday() in fonte.dias_semana` (1=seg
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import date
 from decimal import Decimal
+from typing import Protocol
 
-from carteirai.dominio.dtos import FonteRenda, RegistroDia
+from carteirai.dominio.dtos import FonteRenda, RegistroDia, StatusDia
+
+
+# ---------------------------------------------------------------------------
+# Protocolos de repositório usados por ServicoRenda
+# ---------------------------------------------------------------------------
+
+
+class FonteRendaRepo(Protocol):
+    """Repositório de fontes de renda (leitura)."""
+
+    def ativa_do_usuario(self, usuario_id: str) -> FonteRenda | None: ...
+
+
+class RegistroDiaRepo(Protocol):
+    """Repositório de dias registrados (leitura e escrita)."""
+
+    def salvar(self, registro: RegistroDia) -> None: ...
+
+
+# ---------------------------------------------------------------------------
+# Serviço de renda (satisfaz o protocolo RendaService do contrato CMD)
+# ---------------------------------------------------------------------------
+
+
+class ServicoRenda:
+    """Satisfaz o protocolo RendaService (contrato CMD-04..06).
+
+    Permite registrar um dia (falta/presencial/remoto) para a fonte ativa do
+    usuário e consultar qual é essa fonte ativa. Os dois repositórios são
+    injetados para facilitar testes unitários com fakes.
+    """
+
+    def __init__(
+        self,
+        fonte_repo: FonteRendaRepo,
+        registro_repo: RegistroDiaRepo,
+        gerar_id: Callable[[], str] | None = None,
+    ) -> None:
+        self._fontes = fonte_repo
+        self._registros = registro_repo
+        import uuid
+        self._gerar_id = gerar_id or (lambda: uuid.uuid4().hex)
+
+    def ultima_fonte_ativa(self, usuario_id: str) -> FonteRenda | None:
+        """Retorna a fonte de renda ativa do usuário, ou None se não houver."""
+        return self._fontes.ativa_do_usuario(usuario_id)
+
+    def registrar_dia(
+        self, usuario_id: str, data: date, status: StatusDia
+    ) -> RegistroDia:
+        """Cria/substitui o RegistroDia para (fonte_ativa, data, status).
+
+        Idempotente: se já existe um registro para a data, sobrescreve
+        (comportamento de upsert — contrato CMD-06).
+        Levanta ValueError se o usuário não tiver fonte ativa.
+        """
+        fonte = self.ultima_fonte_ativa(usuario_id)
+        if fonte is None:
+            raise ValueError(f"Usuário {usuario_id!r} sem fonte de renda ativa.")
+        registro = RegistroDia(fonte_renda_id=fonte.id, data=data, status=status)
+        self._registros.salvar(registro)
+        return registro
+
+
+# ---------------------------------------------------------------------------
+# Funções puras (API original — preservadas)
+# ---------------------------------------------------------------------------
 
 
 def ganho_do_dia(fonte: FonteRenda, status: str) -> Decimal:

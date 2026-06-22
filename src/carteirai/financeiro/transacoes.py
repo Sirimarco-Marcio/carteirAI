@@ -21,6 +21,7 @@ class TransacaoRepo(Protocol):
     def salvar(self, transacao: Transacao) -> None: ...
     def buscar(self, transacao_id: str) -> Transacao | None: ...
     def atualizar(self, transacao: Transacao) -> None: ...
+    def buscar_ultima_confirmada(self, usuario_id: str) -> Transacao | None: ...
 
 
 class ServicoTransacoes:
@@ -83,4 +84,40 @@ class ServicoTransacoes:
         t = self._transacoes.buscar(transacao_id)
         t.status = "IGNORADA"
         self._transacoes.atualizar(t)
+        return t
+
+    def desfazer_ultima(self, usuario_id: str) -> Transacao | None:
+        """Desfaz a última transação CONFIRMADA, voltando para PENDENTE_APROVACAO e revertendo o saldo."""
+        t = self._transacoes.buscar_ultima_confirmada(usuario_id)
+        if not t:
+            return None
+        t.status = "PENDENTE_APROVACAO"
+        if t.forma != "credito":
+            conta = self._contas.buscar(t.conta_id)
+            if t.tipo == "saida":
+                novo_saldo = conta.saldo_atual + t.valor
+            else:
+                novo_saldo = conta.saldo_atual - t.valor
+            self._contas.atualizar_saldo(t.conta_id, novo_saldo)
+        self._transacoes.atualizar(t)
+        return t
+
+    def criar_manual(
+        self, usuario_id: str, valor: float | str | Decimal, categoria: str, forma: str, descricao: str
+    ) -> Transacao:
+        """Cria transação manual como PENDENTE_APROVACAO."""
+        from datetime import datetime
+        t = Transacao(
+            id=self._gerar_id(),
+            conta_id="default",
+            usuario_id=usuario_id,
+            valor=Decimal(valor),
+            data_hora=datetime.now(),
+            estabelecimento=descricao or None,
+            categoria=categoria,
+            forma=forma, # type: ignore
+            tipo="saida",
+            status="PENDENTE_APROVACAO",
+        )
+        self._transacoes.salvar(t)
         return t

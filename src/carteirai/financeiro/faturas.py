@@ -20,6 +20,7 @@ class FaturaRepo(Protocol):
     def criar(self, conta_id: str, mes: int, ano: int) -> Fatura: ...
     def atualizar(self, fatura: Fatura) -> None: ...
     def abertas(self, conta_id: str) -> list[Fatura]: ...
+    def abertas_do_usuario(self, usuario_id: str) -> list[Fatura]: ...
 
 
 class ContaRepoF(Protocol):
@@ -53,6 +54,10 @@ class ServicoFaturas:
         import uuid
 
         self._gerar_id = gerar_id or (lambda: uuid.uuid4().hex)
+
+    def faturas_abertas(self, usuario_id: str) -> list[Fatura]:
+        """Retorna todas as faturas ABERTAS do usuário."""
+        return self._faturas.abertas_do_usuario(usuario_id)
 
     def alocar_em_fatura(self, transacao: Transacao, data_compra: date) -> Fatura:
         """Acha/cria a fatura da competência (mês corrente se `data_compra.day <= dia_fechamento`

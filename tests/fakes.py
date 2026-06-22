@@ -360,6 +360,137 @@ class FakeCmd:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Fakes para comandos de AÇÃO do DespachanteComandos (CMD-04..11)
+# ---------------------------------------------------------------------------
+
+
+class FakeRendaService:
+    """Fake de RendaService para testes de /faltei (CMD-04..06).
+
+    Permite programar a fonte ativa retornada por ultima_fonte_ativa().
+    Registra todas as chamadas a registrar_dia() em `registros` para
+    que os testes verifiquem os argumentos recebidos.
+
+    Args:
+        fonte_ativa: FonteRenda devolvida por ultima_fonte_ativa(),
+                     ou None para simular usuário sem fonte ativa.
+    """
+
+    def __init__(self, fonte_ativa=None) -> None:
+        from carteirai.dominio.dtos import RegistroDia
+
+        self._fonte_ativa = fonte_ativa
+        # Lista de RegistroDia criados via registrar_dia() — inspecionada pelos testes.
+        self.registros: list[RegistroDia] = []
+
+    def ultima_fonte_ativa(self, usuario_id: str):
+        """Devolve a fonte programada (ou None)."""
+        return self._fonte_ativa
+
+    def registrar_dia(self, usuario_id: str, data, status: str):
+        """Grava o RegistroDia na lista pública `registros` e o devolve."""
+        from carteirai.dominio.dtos import RegistroDia
+
+        registro = RegistroDia(
+            fonte_renda_id=self._fonte_ativa.id if self._fonte_ativa else "sem-fonte",
+            data=data,
+            status=status,
+        )
+        self.registros.append(registro)
+        return registro
+
+
+class FakeTransacaoServiceCmd:
+    """Fake de TransacaoService para testes de /desfazer e /lancar (CMD-08, 11).
+
+    Permite programar a transação devolvida por desfazer_ultima() e
+    captura chamadas a criar_manual() em `manuais` para inspeção.
+
+    Args:
+        ultima_transacao: Transacao devolvida por desfazer_ultima(),
+                          ou None para simular "nenhuma CONFIRMADA".
+    """
+
+    def __init__(self, ultima_transacao=None) -> None:
+        self._ultima = ultima_transacao
+        # Lista de dicts com os argumentos de cada chamada a criar_manual().
+        self.manuais: list[dict] = []
+
+    def desfazer_ultima(self, usuario_id: str):
+        """Devolve a transação programada (ou None se não há CONFIRMADA)."""
+        return self._ultima
+
+    def criar_manual(self, usuario_id: str, valor, categoria: str, forma: str, descricao: str):
+        """Registra os argumentos em `manuais` e devolve uma Transacao fake."""
+        from datetime import datetime
+        from carteirai.dominio.dtos import Transacao
+
+        chamada = dict(
+            usuario_id=usuario_id,
+            valor=valor,
+            categoria=categoria,
+            forma=forma,
+            descricao=descricao,
+        )
+        self.manuais.append(chamada)
+        return Transacao(
+            id="manual-1",
+            conta_id="conta-1",
+            usuario_id=usuario_id,
+            valor=valor,
+            data_hora=datetime(2024, 6, 18, 12, 0, 0),
+            estabelecimento=descricao or None,
+            categoria=categoria,
+            forma=forma,
+            tipo="saida",
+            status="PENDENTE_APROVACAO",
+        )
+
+
+class FakeFaturaServiceCmd:
+    """Fake de FaturaService para testes de /pagar_fatura (CMD-09).
+
+    Permite programar a lista de faturas abertas e registra chamadas
+    a pagar() em `pagamentos` para inspeção.
+
+    Args:
+        faturas: lista de Fatura devolvida por faturas_abertas().
+    """
+
+    def __init__(self, faturas: list | None = None) -> None:
+        self._faturas: list = faturas or []
+        # Lista de tuplas (fatura_id, conta_corrente_id) de cada chamada a pagar().
+        self.pagamentos: list[tuple] = []
+
+    def faturas_abertas(self, usuario_id: str) -> list:
+        """Devolve a lista de faturas programadas."""
+        return list(self._faturas)
+
+    def pagar_fatura(self, fatura_id: str, conta_corrente_id: str):
+        """Registra o pagamento e devolve uma Transacao fake."""
+        from datetime import datetime
+        from decimal import Decimal
+        from carteirai.dominio.dtos import Transacao
+
+        self.pagamentos.append((fatura_id, conta_corrente_id))
+        # Localiza o valor da fatura para compor a transação de débito.
+        fatura = next((f for f in self._faturas if f.id == fatura_id), None)
+        valor = fatura.valor_total if fatura else Decimal("0")
+        return Transacao(
+            id="pgto-fatura-1",
+            conta_id=conta_corrente_id,
+            usuario_id="u",
+            valor=valor,
+            data_hora=datetime(2024, 6, 18, 12, 0, 0),
+            estabelecimento="Pagamento fatura",
+            categoria="Outros",
+            forma="debito",
+            tipo="saida",
+            status="CONFIRMADA",
+        )
+
+
 class FakeConsultas:
     """Implementa ConsultaFinanceira para testes de DespachanteComandos.
 
