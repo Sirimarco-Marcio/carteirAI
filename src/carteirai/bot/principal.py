@@ -41,6 +41,26 @@ from carteirai.infra.neon_repos import (
 from carteirai.orquestracao.orquestrador import Orquestrador
 from carteirai.telegram.comandos import DespachanteComandos
 
+import uuid
+from sqlalchemy import create_engine
+from sqlalchemy.orm import scoped_session, sessionmaker
+
+from carteirai.financeiro.transacoes import ServicoTransacoes
+from carteirai.financeiro.renda import ServicoRenda
+from carteirai.financeiro.faturas import ServicoFaturas
+from carteirai.infra.sqlalchemy_repos import (
+    SqlAlchemyContaRepo, SqlAlchemyTransacaoRepo, SqlAlchemyFaturaRepo,
+    SqlAlchemyFonteRepo, SqlAlchemyRegistroDiaRepo
+)
+
+_DATABASE_URL = os.getenv("DATABASE_URL")
+if not _DATABASE_URL:
+    print("ERRO: DATABASE_URL ausente no .env", file=sys.stderr)
+    sys.exit(1)
+
+engine = create_engine(_DATABASE_URL)
+SessionLocal = scoped_session(sessionmaker(bind=engine))
+
 _ur = UsuarioRepoNeon()
 _tr = TransacaoRepoNeon()
 
@@ -65,8 +85,29 @@ async def cmd_geral(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if usuario_id is None:
         await update.message.reply_text("Chat não cadastrado.")
         return
-    resp = DespachanteComandos(ConsultaFinanceiraNeon(usuario_id)).processar(update.message.text, usuario_id)
-    await update.message.reply_text(resp)
+        
+    session = SessionLocal()
+    try:
+        conta_repo = SqlAlchemyContaRepo(session)
+        transacao_repo = SqlAlchemyTransacaoRepo(session)
+        fatura_repo = SqlAlchemyFaturaRepo(session)
+        fonte_repo = SqlAlchemyFonteRepo(session)
+        registro_repo = SqlAlchemyRegistroDiaRepo(session)
+        
+        renda_svc = ServicoRenda(fonte_repo, registro_repo)
+        transacao_svc = ServicoTransacoes(conta_repo, transacao_repo)
+        faturas_svc = ServicoFaturas(fatura_repo, conta_repo, transacao_repo)
+        
+        despachante = DespachanteComandos(
+            consultas=ConsultaFinanceiraNeon(usuario_id),
+            renda_svc=renda_svc,
+            transacao_svc=transacao_svc,
+            faturas_svc=faturas_svc
+        )
+        resp = despachante.processar(update.message.text, usuario_id)
+        await update.message.reply_text(resp)
+    finally:
+        SessionLocal.remove()
 
 
 async def handle_notificacao(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -75,7 +116,7 @@ async def handle_notificacao(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
     if usuario_id is None:
         return  # chat desconhecido: ignora (segurança)
     texto = update.message.text
-    item = ItemFila(id=update.message.message_id, texto_bruto=texto, usuario_id=usuario_id,
+    item = ItemFila(id=str(update.message.message_id), texto_bruto=texto, usuario_id=usuario_id,
                     origem="notificacao", status="PROCESSANDO", criada_em=update.message.date)
     orq = Orquestrador(_NoOpFila(), _tr, resolver_llm("gemini"), resolver_llm("local"), max_tentativas=3)
     res = await orq.processar(item)
@@ -108,24 +149,36 @@ async def handle_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> Non
     q = update.callback_query
     await q.answer()
     acao, _, h = (q.data or "").partition(":")
-    t = _tr.buscar(h)
-    if t is None:
-        await q.edit_message_text("⚠️ Transação não encontrada."); return
-    if _ur.chat_id_de(t.usuario_id) != str(q.message.chat.id):
-        await q.edit_message_text("⚠️ Não autorizado."); return
-    if t.status != "PENDENTE_APROVACAO":
-        await q.edit_message_text("ℹ️ Já tratada."); return
-    if acao in ("sim", "nova"):
-        _tr.atualizar_status(h, "CONFIRMADA"); await q.edit_message_text("✅ Confirmado")
-    elif acao in ("nao", "mesma"):
-        _tr.atualizar_status(h, "IGNORADA"); await q.edit_message_text("❌ Ignorado")
-    elif acao == "editar":
-        await q.edit_message_text("✏️ Edição manual ainda não implementada.")
+    
+    session = SessionLocal()
+    try:
+        tr = SqlAlchemyTransacaoRepo(session)
+        conta_repo = SqlAlchemyContaRepo(session)
+        transacao_svc = ServicoTransacoes(conta_repo, tr)
+        
+        t = tr.buscar(h)
+        if t is None:
+            await q.edit_message_text("⚠️ Transação não encontrada."); return
+        if _ur.chat_id_de(t.usuario_id) != str(q.message.chat.id):
+            await q.edit_message_text("⚠️ Não autorizado."); return
+        if t.status != "PENDENTE_APROVACAO":
+            await q.edit_message_text("ℹ️ Já tratada."); return
+            
+        if acao in ("sim", "nova"):
+            transacao_svc.confirmar(h)
+            await q.edit_message_text("✅ Confirmado")
+        elif acao in ("nao", "mesma"):
+            transacao_svc.ignorar(h)
+            await q.edit_message_text("❌ Ignorado")
+        elif acao == "editar":
+            await q.edit_message_text("✏️ Edição manual ainda não implementada.")
+    finally:
+        SessionLocal.remove()
 
 
 def main() -> None:
     app = Application.builder().token(_TOKEN).build()
-    for c in ("saldo", "gastos", "pendentes", "ajuda"):
+    for c in ("saldo", "gastos", "pendentes", "ajuda", "faltei", "lancar", "pagar_fatura", "desfazer"):
         app.add_handler(CommandHandler(c, cmd_geral))
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_notificacao))
