@@ -57,16 +57,18 @@ db/apply.sh
 ssh-188   # ou ssh-189
 ```
 
-## O que falta (modo autônomo — atualizado)
-Já feitos: FILA, DEDUP, ORQ, RENDA, TRANS, FAT (67 testes). **Falta:**
-- **COMP** (fechamento de mês) — **bloqueado pela decisão D15** (de onde vem o previsto por fonte).
-- **Telegram real** (APROV/CMD/ING) — APROV/ING dá pra fazer já; CMD usa os serviços financeiros (prontos).
-- **LocalSSHAdapter** (HTTP do Ollama via SSH) — integração, validar com você / após Pi.
-- **Deploy no Pi** (openfortivpn + Docker) + **Neon** (criar limpo + `db/apply.sh` + camada SQLAlchemy).
-- **Painel Next.js (Vercel)**.
-- Transporte real App→Telegram (canal por pessoa — ver D3).
+## O que falta (atualizado — 91 testes verdes)
+**Feitos (TDD):** FILA, DEDUP, ORQ, auditor, LLM/Gemini, RENDA, TRANS, FAT, COMP, APROV, ING, CMD-consultas (/saldo, /gastos, /pendentes, ajuda). **Falta:**
+- **CMD ações:** /faltei, /desfazer, /pagar_fatura, /lancar, /relatorio, /fechar_mes (TDD).
+- **Fiação do worker (entrypoint):** loop que liga polling do canal → RoteadorIngestao → Fila → Orquestrador → APROV. Torna o worker executável.
+- **Persistência real (Neon):** repos hoje são fakes; falta implementação SQLAlchemy + banco limpo (D9) + chave Gemini com cota (D1).
+- **LocalSSHAdapter** (Ollama via SSH) — integração.
+- **Deploy no Pi** (openfortivpn + Docker — D10 autorizado, depende do entrypoint).
+- **App Android:** TelegramChannelSink (depende do id do canal — D3), localização (D14), app da esposa (D12).
+- **Painel Next.js (Vercel)** — passo 3/4.
 
-Cada módulo é um commit `test:`/`feat:` no GitHub. Decisões pendentes em `DECISOES-PENDENTES.md`.
+Para retomar a integração preciso de você: **(a) id do canal** (1 canal, bot admin), **(b) Neon novo**, **(c) chave Gemini com cota**.
+Cada módulo é um commit `test:`/`feat:` no GitHub. Decisões respondidas em `DECISOES-PENDENTES.md`.
 
 ## ⚠️ Importante (segurança)
 Token do bot, connection string do Neon e a chave do Gemini foram colados em texto no chat —
