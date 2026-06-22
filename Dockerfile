@@ -21,8 +21,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copia código-fonte
+# Copia código-fonte e scripts
 COPY src/ src/
+COPY scripts/ scripts/
 COPY pyproject.toml .
 
 # Instala o pacote em modo editável (resolve imports carteirai.*)
