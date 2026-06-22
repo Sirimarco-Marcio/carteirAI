@@ -1,0 +1,46 @@
+services:
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: carteirai-worker:latest
+    container_name: carteirai-worker
+    restart: unless-stopped
+
+    # Segredos — arquivo .env NÃO copiado na imagem; montado em runtime
+    env_file:
+      - .env
+
+    # Variáveis adicionais (sobrescrevem .env se necessário)
+    environment:
+      # Caminho da fila SQLite dentro do container
+      FILA_DB_PATH: /data/fila.db
+      # Porta do FastAPI
+      PORT: "8000"
+
+    # Fila SQLite persistente (sobrevive ao restart/rebuild do container)
+    volumes:
+      - fila_data:/data
+
+    # Porta do FastAPI: acessível na rede local do Pi (app Android → Pi)
+    ports:
+      - "8000:8000"
+
+    # Healthcheck: garante que o container está vivo antes de marcar como healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+    # Logs com rotação automática (Pi tem disco limitado)
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  fila_data:
+    driver: local
