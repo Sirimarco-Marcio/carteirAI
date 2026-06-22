@@ -59,6 +59,10 @@ if not _DATABASE_URL:
     print("ERRO: DATABASE_URL ausente no .env", file=sys.stderr)
     sys.exit(1)
 
+# SQLAlchemy 2.0 com driver psycopg (v3) requer "postgresql+psycopg://"
+if _DATABASE_URL.startswith("postgresql://"):
+    _DATABASE_URL = _DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
+
 engine = create_engine(_DATABASE_URL)
 SessionLocal = scoped_session(sessionmaker(bind=engine))
 
