@@ -34,6 +34,5 @@ VOLUME ["/data"]
 # Expõe porta do FastAPI (ingestão HTTP do app Android)
 EXPOSE 8000
 
-# Comando padrão: sobe o worker FastAPI (ingestão) + bot Telegram via uvicorn
-# O bot principal roda como processo separado via supervisord ou script de entrada
-CMD ["uvicorn", "carteirai.ingestao.app:app", "--host", "0.0.0.0", "--port", "8000"]
+# Comando padrão: executa o script que sobe o FastAPI + Bot do Telegram
+CMD ["./scripts/start-all.sh"]

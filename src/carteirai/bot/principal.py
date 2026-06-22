@@ -52,6 +52,7 @@ from carteirai.infra.sqlalchemy_repos import (
     SqlAlchemyContaRepo, SqlAlchemyTransacaoRepo, SqlAlchemyFaturaRepo,
     SqlAlchemyFonteRepo, SqlAlchemyRegistroDiaRepo
 )
+from carteirai.fila.fila import Fila
 
 _DATABASE_URL = os.getenv("DATABASE_URL")
 if not _DATABASE_URL:
@@ -64,6 +65,10 @@ SessionLocal = scoped_session(sessionmaker(bind=engine))
 _ur = UsuarioRepoNeon()
 _tr = TransacaoRepoNeon()
 
+_db_path = os.environ.get("FILA_DB_PATH", os.environ.get("CARTEIRAI_DB", "/data/fila.db"))
+# Fila Real (SQLite) usada pelo Worker
+_fila_real = Fila(db_path=_db_path)
+
 
 class _NoOpFila:
     def marcar(self, item_id, status): pass
@@ -71,6 +76,34 @@ class _NoOpFila:
 
 def _brl(v) -> str:
     return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+async def _enviar_resultado_orquestrador(ctx: ContextTypes.DEFAULT_TYPE, res, texto: str, usuario_id: str, chat_reply_id: str | None = None) -> None:
+    """Envia o resultado do Orquestrador para o usuário. Se chat_reply_id for passado, responde lá, senão envia pro dono."""
+    chat_dono = _ur.chat_id_de(usuario_id)
+    dest_chat = chat_reply_id or chat_dono
+
+    if res.status == "PENDENTE_APROVACAO":
+        h = hash_exato(texto)
+        t = res.transacao
+        dup = res.possivel_duplicata
+        if dup:
+            txt = f"⚠️ Parece repetida: {_brl(t.valor)} em {t.estabelecimento or '—'}. É a mesma ou nova?"
+            kb = [[InlineKeyboardButton("É a mesma", callback_data=f"mesma:{h}"),
+                   InlineKeyboardButton("É nova", callback_data=f"nova:{h}")]]
+        else:
+            txt = (f"💰 {t.tipo} {_brl(t.valor)} · {t.forma}\n{t.estabelecimento or '—'} · {t.categoria}\n"
+                   f"Confirma?")
+            kb = [[InlineKeyboardButton("✅ Sim", callback_data=f"sim:{h}"),
+                   InlineKeyboardButton("❌ Não", callback_data=f"nao:{h}"),
+                   InlineKeyboardButton("✏️ Editar", callback_data=f"editar:{h}")]]
+        await ctx.bot.send_message(chat_dono, txt, reply_markup=InlineKeyboardMarkup(kb))
+    elif res.status == "IGNORADA":
+        if chat_reply_id: await ctx.bot.send_message(chat_reply_id, "ℹ️ Não parece uma transação (sem valor). Ignorado.")
+    elif res.status == "DUPLICADA":
+        if chat_reply_id: await ctx.bot.send_message(chat_reply_id, "♻️ Duplicata exata — descartada.")
+    else:  # ERRO
+        if chat_reply_id: await ctx.bot.send_message(chat_reply_id, f"❌ Não consegui extrair: {res.motivo_erro}")
 
 
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -120,29 +153,8 @@ async def handle_notificacao(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
                     origem="notificacao", status="PROCESSANDO", criada_em=update.message.date)
     orq = Orquestrador(_NoOpFila(), _tr, resolver_llm("gemini"), resolver_llm("local"), max_tentativas=3)
     res = await orq.processar(item)
-
-    if res.status == "PENDENTE_APROVACAO":
-        h = hash_exato(texto)
-        t = res.transacao
-        dup = res.possivel_duplicata
-        chat_dono = _ur.chat_id_de(usuario_id)
-        if dup:
-            txt = f"⚠️ Parece repetida: {_brl(t.valor)} em {t.estabelecimento or '—'}. É a mesma ou nova?"
-            kb = [[InlineKeyboardButton("É a mesma", callback_data=f"mesma:{h}"),
-                   InlineKeyboardButton("É nova", callback_data=f"nova:{h}")]]
-        else:
-            txt = (f"💰 {t.tipo} {_brl(t.valor)} · {t.forma}\n{t.estabelecimento or '—'} · {t.categoria}\n"
-                   f"Confirma?")
-            kb = [[InlineKeyboardButton("✅ Sim", callback_data=f"sim:{h}"),
-                   InlineKeyboardButton("❌ Não", callback_data=f"nao:{h}"),
-                   InlineKeyboardButton("✏️ Editar", callback_data=f"editar:{h}")]]
-        await ctx.bot.send_message(chat_dono, txt, reply_markup=InlineKeyboardMarkup(kb))
-    elif res.status == "IGNORADA":
-        await update.message.reply_text("ℹ️ Não parece uma transação (sem valor). Ignorado.")
-    elif res.status == "DUPLICADA":
-        await update.message.reply_text("♻️ Duplicata exata — descartada.")
-    else:  # ERRO
-        await update.message.reply_text(f"❌ Não consegui extrair: {res.motivo_erro}")
+    
+    await _enviar_resultado_orquestrador(ctx, res, texto, usuario_id, chat_reply_id=chat_id)
 
 
 async def handle_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -176,6 +188,22 @@ async def handle_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> Non
         SessionLocal.remove()
 
 
+async def worker_fila(ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """Consome a Fila periodicamente e joga para o Orquestrador."""
+    item = _fila_real.fetch_next()
+    if not item:
+        return
+    
+    logger.info(f"Processando item da Fila ID {item.id} (usuário: {item.usuario_id})")
+    try:
+        orq = Orquestrador(_fila_real, _tr, resolver_llm("gemini"), resolver_llm("local"), max_tentativas=3)
+        res = await orq.processar(item)
+        await _enviar_resultado_orquestrador(ctx, res, item.texto_bruto, item.usuario_id)
+    except Exception as e:
+        logger.error(f"Erro no orquestrador ao processar item {item.id}: {e}")
+        _fila_real.marcar(item.id, "ERRO")
+
+
 def main() -> None:
     app = Application.builder().token(_TOKEN).build()
     for c in ("saldo", "gastos", "pendentes", "ajuda", "faltei", "lancar", "pagar_fatura", "desfazer"):
@@ -183,7 +211,12 @@ def main() -> None:
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_notificacao))
     app.add_handler(CallbackQueryHandler(handle_callback))
-    logger.info("carteirAI bot principal iniciado.")
+    
+    # Worker: Roda a cada 60s, começando em 5s
+    if app.job_queue:
+        app.job_queue.run_repeating(worker_fila, interval=60, first=5)
+    
+    logger.info("carteirAI bot principal iniciado. Background Worker ativado (60s).")
     app.run_polling()
 
 
