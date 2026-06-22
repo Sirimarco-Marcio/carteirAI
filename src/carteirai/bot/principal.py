@@ -77,7 +77,7 @@ async def handle_notificacao(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
     texto = update.message.text
     item = ItemFila(id=update.message.message_id, texto_bruto=texto, usuario_id=usuario_id,
                     origem="notificacao", status="PROCESSANDO", criada_em=update.message.date)
-    orq = Orquestrador(_NoOpFila(), _tr, resolver_llm("gemini"), max_tentativas=3)
+    orq = Orquestrador(_NoOpFila(), _tr, resolver_llm("gemini"), resolver_llm("local"), max_tentativas=3)
     res = await orq.processar(item)
 
     if res.status == "PENDENTE_APROVACAO":
