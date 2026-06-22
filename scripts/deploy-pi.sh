@@ -57,6 +57,9 @@ fi
 
 echo "✅ Deploy concluído! Worker rodando em http://$(hostname -I | awk '{print $1}'):8000"
 echo "   Teste: curl http://localhost:8000/healthz"
+
+echo "📱 Registrando comandos mais recentes no Telegram..."
+docker compose exec -T carteirai-worker python scripts/register_commands.py || echo "⚠️ Erro ao registrar comandos do Telegram, verifique o TOKEN."
 REMOTE
 
 echo "✅ Deploy remoto finalizado."
