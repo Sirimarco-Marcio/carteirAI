@@ -10,7 +10,8 @@ import Link from "next/link";
 interface Membro {
   id: number;
   nome: string;
-  telegram: string;
+  appUserId: string;      // UUID do app Android (só relevante para o admin)
+  telegramChatId: string; // chat_id do Telegram
 }
 
 interface Banco {
@@ -33,7 +34,7 @@ interface FonteRenda {
   valorDia: string;
   alimentacaoDia: string;
   transporteDia: string;
-  dias: boolean[]; // [seg, ter, qua, qui, sex, sab, dom]
+  dias: boolean[]; // [seg, ter, qua, qui, sex, sab, dom] → índices 1..7
 }
 
 interface Divida {
@@ -44,11 +45,20 @@ interface Divida {
   direcao: "devo" | "me-devem";
 }
 
+// Resultado retornado pela API após o onboarding
+interface OnboardingResult {
+  familia_id: string;
+  usuarios: { id: string; nome: string; role: string }[];
+}
+
 // ---------------------------------------------------------------------------
 // Constantes
 // ---------------------------------------------------------------------------
 
 const DIAS_SEMANA = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+// Índices ISO: Seg=1, Ter=2, ..., Dom=7  (padrão do banco)
+const DIAS_ISO_IDX = [1, 2, 3, 4, 5, 6, 7];
+
 const PASSOS = ["Família", "Contas", "Renda", "Dívidas", "Revisão"];
 const TOTAL_PASSOS = 5;
 
@@ -73,6 +83,7 @@ function Input({
   onChange,
   placeholder,
   required,
+  hint,
 }: {
   label?: string;
   type?: string;
@@ -80,6 +91,7 @@ function Input({
   onChange: (v: string) => void;
   placeholder?: string;
   required?: boolean;
+  hint?: string;
 }) {
   return (
     <div className="flex flex-col gap-1">
@@ -96,6 +108,7 @@ function Input({
         required={required}
         className="w-full rounded-md border border-line bg-surface px-4 py-2.5 text-sm text-ink outline-none transition focus:border-brand focus:ring-[3px] focus:ring-brand-soft placeholder:text-muted/60"
       />
+      {hint && <p className="text-[11px] text-muted/70">{hint}</p>}
     </div>
   );
 }
@@ -159,19 +172,26 @@ function Toggle({
 // ---------------------------------------------------------------------------
 
 function PassoFamilia({
+  familiaName,
+  setFamiliaName,
   membros,
   setMembros,
 }: {
+  familiaName: string;
+  setFamiliaName: (v: string) => void;
   membros: Membro[];
   setMembros: React.Dispatch<React.SetStateAction<Membro[]>>;
 }) {
   const [nome, setNome] = useState("");
   const [telegram, setTelegram] = useState("");
-  const nextId = membros.length > 0 ? Math.max(...membros.map((m) => m.id)) + 1 : 1;
+  const nextId = membros.length > 0 ? Math.max(...membros.map((m) => m.id)) + 1 : 2;
 
   function adicionar() {
     if (!nome.trim()) return;
-    setMembros((prev) => [...prev, { id: nextId, nome: nome.trim(), telegram: telegram.trim() }]);
+    setMembros((prev) => [
+      ...prev,
+      { id: nextId, nome: nome.trim(), appUserId: "", telegramChatId: telegram.trim() },
+    ]);
     setNome("");
     setTelegram("");
   }
@@ -180,28 +200,89 @@ function PassoFamilia({
     setMembros((prev) => prev.filter((m) => m.id !== id));
   }
 
+  // Atualiza campos do admin (primeiro membro)
+  function setAdminField(field: "appUserId" | "telegramChatId", value: string) {
+    setMembros((prev) =>
+      prev.map((m, idx) => (idx === 0 ? { ...m, [field]: value } : m))
+    );
+  }
+
+  const admin = membros[0];
+
   return (
     <div className="flex flex-col gap-6">
-      <p className="text-sm text-muted">
-        Adicione todos os membros da família que vão usar o carteirAI. O primeiro será o
-        administrador.
-      </p>
-
-      {/* Formulário de adição */}
+      {/* Nome da família */}
       <div className="rounded-lg border border-line bg-surface-2 p-4">
         <p className="mb-3 text-xs font-semibold uppercase tracking-[0.05em] text-muted">
-          Novo membro
+          Nome da família
+        </p>
+        <Input
+          label="Como sua família se chama?"
+          value={familiaName}
+          onChange={setFamiliaName}
+          placeholder="Ex.: Família Silva"
+          required
+        />
+      </div>
+
+      {/* Admin — campos especiais */}
+      {admin && (
+        <div className="rounded-lg border border-brand/30 bg-brand-soft/20 p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-soft text-xs font-bold text-brand">
+              {admin.nome[0]?.toUpperCase() ?? "?"}
+            </span>
+            <p className="text-sm font-semibold text-ink">
+              {admin.nome}
+              <span className="ml-2 rounded-full bg-brand-soft px-2 py-0.5 text-[10px] font-semibold text-brand">
+                Administrador
+              </span>
+            </p>
+          </div>
+          <div className="flex flex-col gap-3">
+            <Input
+              label="Seu nome"
+              value={admin.nome}
+              onChange={(v) =>
+                setMembros((prev) =>
+                  prev.map((m, idx) => (idx === 0 ? { ...m, nome: v } : m))
+                )
+              }
+              placeholder="Ex.: Lucas"
+              required
+            />
+            <Input
+              label="ID do app (Copiar ID no app Notifier)"
+              value={admin.appUserId}
+              onChange={(v) => setAdminField("appUserId", v)}
+              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+              hint="Abra o app Notifier → menu → Copiar ID. Deixe em branco para gerar automaticamente."
+            />
+            <Input
+              label="Chat do Telegram (opcional)"
+              value={admin.telegramChatId}
+              onChange={(v) => setAdminField("telegramChatId", v)}
+              placeholder="@usuario ou número do chat_id"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Formulário de adição de membros extras */}
+      <div className="rounded-lg border border-line bg-surface-2 p-4">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.05em] text-muted">
+          Adicionar outro membro
         </p>
         <div className="flex flex-col gap-3">
           <Input
             label="Nome"
             value={nome}
             onChange={setNome}
-            placeholder="Ex.: Lucas"
+            placeholder="Ex.: Maria"
             required
           />
           <Input
-            label="Telegram (opcional)"
+            label="Chat do Telegram (opcional)"
             value={telegram}
             onChange={setTelegram}
             placeholder="@usuario_telegram"
@@ -217,45 +298,33 @@ function PassoFamilia({
         </div>
       </div>
 
-      {/* Lista de membros */}
-      {membros.length === 0 ? (
-        <p className="text-center text-sm text-muted">Nenhum membro adicionado ainda.</p>
-      ) : (
+      {/* Lista de membros extras */}
+      {membros.length > 1 && (
         <ul className="flex flex-col gap-2">
-          {membros.map((m, idx) => (
+          {membros.slice(1).map((m) => (
             <li
               key={m.id}
               className="flex items-center gap-3 rounded-lg border border-line bg-surface px-4 py-3"
             >
-              {/* Avatar inicial */}
               <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-brand-soft text-sm font-bold text-brand">
                 {m.nome[0].toUpperCase()}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-ink">
-                  {m.nome}
-                  {idx === 0 && (
-                    <span className="ml-2 rounded-full bg-brand-soft px-2 py-0.5 text-[10px] font-semibold text-brand">
-                      Administrador
-                    </span>
-                  )}
-                </p>
-                {m.telegram && (
-                  <p className="truncate text-xs text-muted">{m.telegram}</p>
+                <p className="truncate text-sm font-semibold text-ink">{m.nome}</p>
+                {m.telegramChatId && (
+                  <p className="truncate text-xs text-muted">{m.telegramChatId}</p>
                 )}
               </div>
-              {idx > 0 && (
-                <button
-                  type="button"
-                  onClick={() => remover(m.id)}
-                  aria-label={`Remover ${m.nome}`}
-                  className="text-muted hover:text-saida transition-colors"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => remover(m.id)}
+                aria-label={`Remover ${m.nome}`}
+                className="text-muted hover:text-saida transition-colors"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
             </li>
           ))}
         </ul>
@@ -757,7 +826,10 @@ function PassoRevisao({
             </span>
             <div className="min-w-0 flex-1">
               <span className="text-sm text-ink">{m.nome}</span>
-              {m.telegram && <span className="ml-2 text-xs text-muted">{m.telegram}</span>}
+              {m.telegramChatId && <span className="ml-2 text-xs text-muted">{m.telegramChatId}</span>}
+              {idx === 0 && m.appUserId && (
+                <p className="text-[10px] text-muted/70 font-mono truncate">{m.appUserId}</p>
+              )}
             </div>
             {idx === 0 && (
               <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[10px] font-semibold text-brand">
@@ -817,11 +889,7 @@ function PassoRevisao({
       </BlocoRevisao>
 
       {/* Dívidas */}
-      <BlocoRevisao
-        titulo="Dívidas"
-        passo={4}
-        vazio={dividas.length === 0}
-      >
+      <BlocoRevisao titulo="Dívidas" passo={4} vazio={dividas.length === 0}>
         {dividas.map((d) => (
           <div key={d.id} className="flex items-center gap-3 px-4 py-3">
             <span
@@ -846,17 +914,78 @@ function PassoRevisao({
 }
 
 // ---------------------------------------------------------------------------
+// Tela de sucesso
+// ---------------------------------------------------------------------------
+
+function TelaSucesso({ resultado }: { resultado: OnboardingResult }) {
+  const admin = resultado.usuarios.find((u) => u.role === "admin") ?? resultado.usuarios[0];
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center bg-paper px-4">
+      <div className="w-full max-w-sm rounded-2xl border border-line bg-surface p-8 text-center shadow-sm">
+        {/* Ícone de check */}
+        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-entrada/10">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#1f7a5c" strokeWidth="2.5">
+            <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+        <h1 className="font-display text-2xl font-semibold text-ink">Tudo pronto!</h1>
+        <p className="mt-2 text-sm text-muted">
+          Família criada com sucesso no carteirAI.
+        </p>
+
+        {/* Detalhes */}
+        <div className="mt-6 rounded-lg border border-line bg-surface-2 p-4 text-left">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.05em] text-muted">
+            Identificadores
+          </p>
+          <div className="flex flex-col gap-1.5">
+            <div>
+              <p className="text-[10px] text-muted">ID da família</p>
+              <p className="font-mono text-xs text-ink break-all">{resultado.familia_id}</p>
+            </div>
+            {admin && (
+              <div className="mt-1">
+                <p className="text-[10px] text-muted">ID do admin ({admin.nome})</p>
+                <p className="font-mono text-xs text-ink break-all">{admin.id}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-6 flex flex-col gap-3">
+          <Link
+            href="/"
+            className="flex w-full items-center justify-center gap-1.5 rounded-md bg-brand-dark px-5 py-3 text-sm font-semibold text-brand-fg transition-colors hover:bg-brand"
+          >
+            Ir para o painel
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Componente raiz do wizard
 // ---------------------------------------------------------------------------
 
 export default function OnboardingPage() {
   const [passo, setPasso] = useState(1);
+  const [familiaName, setFamiliaName] = useState("");
   const [membros, setMembros] = useState<Membro[]>([
-    { id: 1, nome: "Você", telegram: "" },
+    { id: 1, nome: "Você", appUserId: "", telegramChatId: "" },
   ]);
   const [bancos, setBancos] = useState<Banco[]>([]);
   const [fontes, setFontes] = useState<FonteRenda[]>([]);
   const [dividas, setDividas] = useState<Divida[]>([]);
+
+  // Estado de submissão
+  const [enviando, setEnviando] = useState(false);
+  const [erroEnvio, setErroEnvio] = useState<string | null>(null);
+  const [resultado, setResultado] = useState<OnboardingResult | null>(null);
 
   const titulos = [
     "Família & membros",
@@ -885,6 +1014,110 @@ export default function OnboardingPage() {
   }
 
   const podePular = passo === 4; // dívidas é opcional
+
+  // -------------------------------------------------------------------------
+  // Monta o payload e chama a API
+  // -------------------------------------------------------------------------
+  async function concluir() {
+    setErroEnvio(null);
+    setEnviando(true);
+
+    // Monta membros para o payload
+    const membrosPayload = membros.map((m, idx) => ({
+      nome: m.nome,
+      role: (idx === 0 ? "admin" : "membro") as "admin" | "membro",
+      usuario_id: idx === 0 && m.appUserId.trim() ? m.appUserId.trim() : undefined,
+      telegram_chat_id: m.telegramChatId.trim() || undefined,
+    }));
+
+    // Monta contas: um banco pode gerar conta corrente e/ou cartão
+    const contasPayload: {
+      banco: string;
+      package_name?: string;
+      tipo: "corrente" | "credito" | "dinheiro";
+      saldo?: number;
+      limite?: number;
+      dia_fechamento?: number;
+      dia_vencimento?: number;
+    }[] = [];
+    for (const b of bancos) {
+      if (b.temConta) {
+        contasPayload.push({
+          banco: b.nome,
+          package_name: b.pacote || undefined,
+          tipo: "corrente",
+          saldo: b.saldoInicial ? parseFloat(b.saldoInicial) : 0,
+        });
+      }
+      if (b.temCartao) {
+        contasPayload.push({
+          banco: b.nome,
+          package_name: b.pacote || undefined,
+          tipo: "credito",
+          limite: b.limite ? parseFloat(b.limite) : undefined,
+          dia_fechamento: b.fechamento ? parseInt(b.fechamento) : undefined,
+          dia_vencimento: b.vencimento ? parseInt(b.vencimento) : undefined,
+        });
+      }
+    }
+
+    // Monta fontes de renda
+    const fontesPayload = fontes.map((f) => {
+      const diasSemana = f.tipo === "dia"
+        ? DIAS_ISO_IDX.filter((_, i) => f.dias[i])
+        : [];
+      return {
+        nome: f.nome,
+        tipo_calculo: (f.tipo === "fixo" ? "fixo_mensal" : "por_dia") as "fixo_mensal" | "por_dia",
+        valor_base: parseFloat(f.tipo === "fixo" ? f.valorFixo || "0" : f.valorDia || "0"),
+        valor_alimentacao_dia: f.alimentacaoDia ? parseFloat(f.alimentacaoDia) : undefined,
+        valor_transporte_dia: f.transporteDia ? parseFloat(f.transporteDia) : undefined,
+        dias_semana: diasSemana,
+      };
+    });
+
+    // Monta dívidas
+    const dividasPayload = dividas.map((d) => ({
+      contraparte_nome: d.contraparte,
+      valor: parseFloat(d.valor),
+      tipo: (d.direcao === "me-devem" ? "me_devem" : "devo") as "devo" | "me_devem",
+      vencimento: d.vencimento || undefined,
+    }));
+
+    const payload = {
+      familia: { nome: familiaName || "Minha Família" },
+      membros: membrosPayload,
+      contas: contasPayload.length > 0 ? contasPayload : undefined,
+      fontes: fontesPayload.length > 0 ? fontesPayload : undefined,
+      dividas: dividasPayload.length > 0 ? dividasPayload : undefined,
+    };
+
+    try {
+      const res = await fetch("/api/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setErroEnvio(data?.erro ?? `Erro ${res.status}`);
+      } else {
+        setResultado(data as OnboardingResult);
+      }
+    } catch (err) {
+      setErroEnvio("Falha de rede. Verifique a conexão e tente novamente.");
+      console.error("[onboarding] fetch error:", err);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  // Tela de sucesso substitui o wizard por completo
+  if (resultado) {
+    return <TelaSucesso resultado={resultado} />;
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-paper">
@@ -955,7 +1188,14 @@ export default function OnboardingPage() {
         </div>
 
         {/* Conteúdo do passo atual */}
-        {passo === 1 && <PassoFamilia membros={membros} setMembros={setMembros} />}
+        {passo === 1 && (
+          <PassoFamilia
+            familiaName={familiaName}
+            setFamiliaName={setFamiliaName}
+            membros={membros}
+            setMembros={setMembros}
+          />
+        )}
         {passo === 2 && <PassoContas bancos={bancos} setBancos={setBancos} />}
         {passo === 3 && <PassoRenda fontes={fontes} setFontes={setFontes} />}
         {passo === 4 && <PassoDividas dividas={dividas} setDividas={setDividas} />}
@@ -972,63 +1212,90 @@ export default function OnboardingPage() {
 
       {/* Rodapé fixo com navegação */}
       <footer className="fixed bottom-0 left-0 right-0 z-40 border-t border-line bg-paper/95 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-xl items-center justify-between gap-3 px-4 py-4">
-          {passo > 1 ? (
-            <button
-              type="button"
-              onClick={voltar}
-              className="flex items-center gap-1.5 rounded-md border border-line bg-surface px-5 py-3 text-sm font-semibold text-ink transition-colors hover:bg-surface-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-soft"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
+        <div className="mx-auto flex max-w-xl flex-col gap-2 px-4 py-4">
+          {/* Mensagem de erro de envio */}
+          {erroEnvio && passo === TOTAL_PASSOS && (
+            <div className="flex items-start gap-2 rounded-md border border-saida/30 bg-saida/5 px-4 py-2.5 text-sm text-saida">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mt-0.5 flex-shrink-0">
+                <circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16.5v.5" strokeLinecap="round" />
               </svg>
-              Voltar
-            </button>
-          ) : (
-            <Link
-              href="/login"
-              className="flex items-center gap-1.5 rounded-md border border-line bg-surface px-5 py-3 text-sm font-semibold text-ink transition-colors hover:bg-surface-2"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              Já tenho conta
-            </Link>
+              <span>{erroEnvio}</span>
+            </div>
           )}
 
-          <div className="flex items-center gap-2">
-            {podePular && passo < TOTAL_PASSOS && (
+          <div className="flex items-center justify-between gap-3">
+            {passo > 1 ? (
               <button
                 type="button"
-                onClick={avancar}
-                className="rounded-md px-4 py-3 text-sm font-medium text-muted transition-colors hover:text-ink focus:outline-none"
+                onClick={voltar}
+                disabled={enviando}
+                className="flex items-center gap-1.5 rounded-md border border-line bg-surface px-5 py-3 text-sm font-semibold text-ink transition-colors hover:bg-surface-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-soft disabled:opacity-40"
               >
-                Pular
-              </button>
-            )}
-
-            {passo < TOTAL_PASSOS ? (
-              <button
-                type="button"
-                onClick={avancar}
-                className="flex items-center gap-1.5 rounded-md bg-brand-dark px-5 py-3 text-sm font-semibold text-brand-fg transition-colors hover:bg-brand focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-soft"
-              >
-                Continuar
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
+                Voltar
               </button>
             ) : (
               <Link
-                href="/"
-                className="flex items-center gap-1.5 rounded-md bg-brand-dark px-5 py-3 text-sm font-semibold text-brand-fg transition-colors hover:bg-brand focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-soft"
+                href="/login"
+                className="flex items-center gap-1.5 rounded-md border border-line bg-surface px-5 py-3 text-sm font-semibold text-ink transition-colors hover:bg-surface-2"
               >
-                Concluir e ir pro painel
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
+                Já tenho conta
               </Link>
             )}
+
+            <div className="flex items-center gap-2">
+              {podePular && passo < TOTAL_PASSOS && (
+                <button
+                  type="button"
+                  onClick={avancar}
+                  className="rounded-md px-4 py-3 text-sm font-medium text-muted transition-colors hover:text-ink focus:outline-none"
+                >
+                  Pular
+                </button>
+              )}
+
+              {passo < TOTAL_PASSOS ? (
+                <button
+                  type="button"
+                  onClick={avancar}
+                  className="flex items-center gap-1.5 rounded-md bg-brand-dark px-5 py-3 text-sm font-semibold text-brand-fg transition-colors hover:bg-brand focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-soft"
+                >
+                  Continuar
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={concluir}
+                  disabled={enviando}
+                  className="flex items-center gap-1.5 rounded-md bg-brand-dark px-5 py-3 text-sm font-semibold text-brand-fg transition-colors hover:bg-brand focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-soft disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {enviando ? (
+                    <>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin">
+                        <circle cx="12" cy="12" r="9" strokeOpacity="0.25" />
+                        <path d="M12 3a9 9 0 0 1 9 9" strokeLinecap="round" />
+                      </svg>
+                      Salvando...
+                    </>
+                  ) : (
+                    <>
+                      Concluir e ir pro painel
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </footer>
