@@ -213,7 +213,7 @@ function AppVinculoCard({
       <ol className="mb-4 flex flex-col gap-3">
         {[
           <>Abra o <strong className="text-ink">CarteirAI Notifier</strong> no celular</>,
-          <>Na tela inicial, toque em <strong className="text-ink">Copiar ID</strong></>,
+          <>Na aba <strong className="text-ink">Conta</strong>, toque em <strong className="text-ink">Copiar ID</strong></>,
           <>Cole o ID copiado no campo abaixo</>,
         ].map((texto, i) => (
           <li key={i} className="flex items-start gap-3">
