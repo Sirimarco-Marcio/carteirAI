@@ -51,6 +51,8 @@ interface OnboardingResult {
   usuarios: { id: string; nome: string; role: string }[];
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // ---------------------------------------------------------------------------
 // Constantes
 // ---------------------------------------------------------------------------
@@ -109,6 +111,130 @@ function Input({
         className="w-full rounded-md border border-line bg-surface px-4 py-2.5 text-sm text-ink outline-none transition focus:border-brand focus:ring-[3px] focus:ring-brand-soft placeholder:text-muted/60"
       />
       {hint && <p className="text-[11px] text-muted/70">{hint}</p>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Card de vinculação do app (substitui o input plano)
+// ---------------------------------------------------------------------------
+
+function AppVinculoCard({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [expandido, setExpandido] = useState(false);
+  const vinculado = UUID_RE.test(value.trim());
+  const invalido = value.trim().length > 0 && !vinculado;
+
+  if (vinculado) {
+    return (
+      <div className="rounded-lg border border-entrada/40 bg-entrada/5 p-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-entrada/15">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1f7a5c" strokeWidth="2.5">
+                <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-entrada">App vinculado</p>
+              <p className="font-mono text-[10px] text-muted/70 truncate">{value.slice(0, 8)}…{value.slice(-4)}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => { onChange(""); setExpandido(true); }}
+            className="text-xs font-medium text-muted hover:text-brand transition-colors"
+          >
+            Alterar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!expandido) {
+    return (
+      <div className="rounded-lg border border-line bg-surface-2 p-4">
+        <div className="flex items-start gap-3">
+          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-brand-soft">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1f7a5c" strokeWidth="2">
+              <rect x="5" y="2" width="14" height="20" rx="2" />
+              <circle cx="12" cy="18" r="1" fill="#1f7a5c" />
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-ink">Vincular app Notifier</p>
+            <p className="text-xs text-muted mt-0.5 leading-relaxed">
+              Sem vínculo, gastos de notificações não serão registrados automaticamente.
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setExpandido(true)}
+                className="rounded-md bg-brand-dark px-3 py-1.5 text-xs font-semibold text-brand-fg hover:bg-brand transition-colors"
+              >
+                Tenho o app instalado →
+              </button>
+              <span className="text-xs text-muted">ou vincular depois</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-brand/30 bg-brand-soft/10 p-4">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-brand-soft">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1f7a5c" strokeWidth="2">
+              <rect x="5" y="2" width="14" height="20" rx="2" />
+              <circle cx="12" cy="18" r="1" fill="#1f7a5c" />
+            </svg>
+          </div>
+          <p className="text-sm font-semibold text-ink">Vincular app Notifier</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setExpandido(false)}
+          className="text-xs text-muted hover:text-ink transition-colors"
+        >
+          Fechar
+        </button>
+      </div>
+
+      <ol className="mb-4 flex flex-col gap-3">
+        {[
+          <>Abra o <strong className="text-ink">CarteirAI Notifier</strong> no celular</>,
+          <>Na tela inicial, toque em <strong className="text-ink">Copiar ID</strong></>,
+          <>Cole o ID copiado no campo abaixo</>,
+        ].map((texto, i) => (
+          <li key={i} className="flex items-start gap-3">
+            <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-brand-soft text-[10px] font-bold text-brand">
+              {i + 1}
+            </span>
+            <p className="pt-0.5 text-xs text-muted">{texto}</p>
+          </li>
+        ))}
+      </ol>
+
+      <Input
+        label="ID copiado do app"
+        value={value}
+        onChange={onChange}
+        placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+      />
+      {invalido && (
+        <p className="mt-1 text-[11px] text-saida">
+          Formato inválido — cole o UUID exatamente como aparece no app.
+        </p>
+      )}
     </div>
   );
 }
@@ -230,10 +356,10 @@ function PassoFamilia({
         <div className="rounded-lg border border-brand/30 bg-brand-soft/20 p-4">
           <div className="mb-3 flex items-center gap-2">
             <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-soft text-xs font-bold text-brand">
-              {admin.nome[0]?.toUpperCase() ?? "?"}
+              {admin.nome?.[0]?.toUpperCase() ?? "?"}
             </span>
             <p className="text-sm font-semibold text-ink">
-              {admin.nome}
+              {admin.nome || "Você"}
               <span className="ml-2 rounded-full bg-brand-soft px-2 py-0.5 text-[10px] font-semibold text-brand">
                 Administrador
               </span>
@@ -248,15 +374,12 @@ function PassoFamilia({
                   prev.map((m, idx) => (idx === 0 ? { ...m, nome: v } : m))
                 )
               }
-              placeholder="Ex.: Lucas"
+              placeholder="Ex.: Lucas, Maria…"
               required
             />
-            <Input
-              label="ID do app (opcional)"
+            <AppVinculoCard
               value={admin.appUserId}
               onChange={(v) => setAdminField("appUserId", v)}
-              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-              hint="Opcional. Abra o app Notifier (ele mostra um ID mesmo sem conta) → Copiar ID → cole aqui pra vincular este celular. Em branco: geramos um ID e você vincula depois."
             />
             <Input
               label="Chat do Telegram (opcional)"
@@ -917,10 +1040,16 @@ function PassoRevisao({
 // Tela de sucesso
 // ---------------------------------------------------------------------------
 
-function TelaSucesso({ resultado }: { resultado: OnboardingResult }) {
+function TelaSucesso({
+  resultado,
+  appVinculado,
+}: {
+  resultado: OnboardingResult;
+  appVinculado: boolean;
+}) {
   const admin = resultado.usuarios.find((u) => u.role === "admin") ?? resultado.usuarios[0];
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-paper px-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-paper px-4 py-8">
       <div className="w-full max-w-sm rounded-2xl border border-line bg-surface p-8 text-center shadow-sm">
         {/* Ícone de check */}
         <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-entrada/10">
@@ -928,29 +1057,61 @@ function TelaSucesso({ resultado }: { resultado: OnboardingResult }) {
             <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </div>
-        <h1 className="font-display text-2xl font-semibold text-ink">Tudo pronto!</h1>
+        <h1 className="font-display text-2xl font-semibold text-ink">Família criada!</h1>
         <p className="mt-2 text-sm text-muted">
-          Família criada com sucesso no carteirAI.
+          Conta configurada com sucesso no carteirAI.
         </p>
 
-        {/* Detalhes */}
-        <div className="mt-6 rounded-lg border border-line bg-surface-2 p-4 text-left">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.05em] text-muted">
-            Identificadores
-          </p>
-          <div className="flex flex-col gap-1.5">
-            <div>
-              <p className="text-[10px] text-muted">ID da família</p>
-              <p className="font-mono text-xs text-ink break-all">{resultado.familia_id}</p>
+        {/* Alerta se app não vinculado */}
+        {!appVinculado && admin && (
+          <div className="mt-5 rounded-lg border border-alerta/40 bg-alerta/5 p-4 text-left">
+            <div className="flex items-center gap-2 mb-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#c8852e" strokeWidth="2" className="flex-shrink-0">
+                <path d="M12 8v5M12 16.5v.5" strokeLinecap="round" />
+                <circle cx="12" cy="12" r="9" />
+              </svg>
+              <p className="text-xs font-semibold text-alerta">App não vinculado</p>
             </div>
-            {admin && (
-              <div className="mt-1">
-                <p className="text-[10px] text-muted">ID do admin ({admin.nome})</p>
-                <p className="font-mono text-xs text-ink break-all">{admin.id}</p>
-              </div>
-            )}
+            <p className="text-xs text-muted mb-3 leading-relaxed">
+              Gastos de notificações só funcionam com o app vinculado. Abra o <strong className="text-ink">CarteirAI Notifier</strong>, toque em <strong className="text-ink">Copiar ID</strong> e anote — você precisará desse ID para refazer o cadastro vinculando o app.
+            </p>
+            <div className="rounded-md bg-surface px-3 py-2">
+              <p className="text-[10px] text-muted mb-0.5">ID gerado para você (para referência)</p>
+              <p className="font-mono text-[11px] text-ink break-all">{admin.id}</p>
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Badge app vinculado */}
+        {appVinculado && (
+          <div className="mt-5 flex items-center justify-center gap-2 rounded-lg border border-entrada/30 bg-entrada/5 px-4 py-2.5">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1f7a5c" strokeWidth="2.5">
+              <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <p className="text-xs font-semibold text-entrada">App Notifier vinculado</p>
+          </div>
+        )}
+
+        {/* Detalhes colapsados */}
+        <details className="mt-4 text-left">
+          <summary className="cursor-pointer text-xs font-medium text-muted hover:text-ink transition-colors">
+            Ver identificadores
+          </summary>
+          <div className="mt-3 rounded-lg border border-line bg-surface-2 p-3">
+            <div className="flex flex-col gap-1.5">
+              <div>
+                <p className="text-[10px] text-muted">ID da família</p>
+                <p className="font-mono text-[11px] text-ink break-all">{resultado.familia_id}</p>
+              </div>
+              {admin && (
+                <div className="mt-1">
+                  <p className="text-[10px] text-muted">ID do admin ({admin.nome})</p>
+                  <p className="font-mono text-[11px] text-ink break-all">{admin.id}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </details>
 
         <div className="mt-6 flex flex-col gap-3">
           <Link
@@ -976,7 +1137,7 @@ export default function OnboardingPage() {
   const [passo, setPasso] = useState(1);
   const [familiaName, setFamiliaName] = useState("");
   const [membros, setMembros] = useState<Membro[]>([
-    { id: 1, nome: "Você", appUserId: "", telegramChatId: "" },
+    { id: 1, nome: "", appUserId: "", telegramChatId: "" },
   ]);
   const [bancos, setBancos] = useState<Banco[]>([]);
   const [fontes, setFontes] = useState<FonteRenda[]>([]);
@@ -1024,7 +1185,7 @@ export default function OnboardingPage() {
 
     // Monta membros para o payload
     const membrosPayload = membros.map((m, idx) => ({
-      nome: m.nome,
+      nome: m.nome.trim() || (idx === 0 ? "Admin" : "Membro"),
       role: (idx === 0 ? "admin" : "membro") as "admin" | "membro",
       usuario_id: idx === 0 && m.appUserId.trim() ? m.appUserId.trim() : undefined,
       telegram_chat_id: m.telegramChatId.trim() || undefined,
@@ -1085,7 +1246,7 @@ export default function OnboardingPage() {
     }));
 
     const payload = {
-      familia: { nome: familiaName || "Minha Família" },
+      familia: { nome: familiaName.trim() || "Minha Família" },
       membros: membrosPayload,
       contas: contasPayload.length > 0 ? contasPayload : undefined,
       fontes: fontesPayload.length > 0 ? fontesPayload : undefined,
@@ -1116,7 +1277,12 @@ export default function OnboardingPage() {
 
   // Tela de sucesso substitui o wizard por completo
   if (resultado) {
-    return <TelaSucesso resultado={resultado} />;
+    return (
+      <TelaSucesso
+        resultado={resultado}
+        appVinculado={UUID_RE.test(membros[0]?.appUserId?.trim() ?? "")}
+      />
+    );
   }
 
   return (
