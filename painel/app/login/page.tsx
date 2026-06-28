@@ -2,9 +2,37 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { signIn } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
-  const [verSenha, setVerSenha] = useState(false);
+  const router = useRouter();
+  const [verSenha, setVerSenha]   = useState(false);
+  const [email, setEmail]         = useState("");
+  const [senha, setSenha]         = useState("");
+  const [erro, setErro]           = useState<string | null>(null);
+  const [carregando, setCarregando] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setErro(null);
+    setCarregando(true);
+
+    const result = await signIn("credentials", {
+      email: email.trim().toLowerCase(),
+      password: senha,
+      redirect: false,
+    });
+
+    setCarregando(false);
+
+    if (!result || result.error) {
+      setErro("E-mail ou senha incorretos.");
+    } else {
+      router.push("/inicio");
+      router.refresh();
+    }
+  }
 
   return (
     <div className="flex min-h-screen flex-col lg:flex-row">
@@ -29,12 +57,15 @@ export default function LoginPage() {
         <div className="w-full max-w-sm rounded-lg border border-line bg-surface p-7 shadow-float">
           <h1 className="font-display text-2xl font-semibold text-ink">Entrar</h1>
 
-          <form className="mt-6 space-y-4" action="/inicio">
+          <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
             <div>
               <input
                 type="email"
                 placeholder="E-mail"
                 autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
                 className="w-full rounded-md border border-line bg-surface px-4 py-3 text-ink outline-none transition focus:border-brand focus:ring-[3px] focus:ring-brand-soft"
               />
             </div>
@@ -43,6 +74,9 @@ export default function LoginPage() {
                 type={verSenha ? "text" : "password"}
                 placeholder="Senha"
                 autoComplete="current-password"
+                value={senha}
+                onChange={(e) => setSenha(e.target.value)}
+                required
                 className="w-full rounded-md border border-line bg-surface px-4 py-3 pr-11 text-ink outline-none transition focus:border-brand focus:ring-[3px] focus:ring-brand-soft"
               />
               <button
@@ -59,11 +93,29 @@ export default function LoginPage() {
               </button>
             </div>
 
+            {erro && (
+              <div className="flex items-center gap-2 rounded-md border border-saida/30 bg-saida/5 px-4 py-2.5 text-sm text-saida">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="flex-shrink-0">
+                  <circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16.5v.5" strokeLinecap="round" />
+                </svg>
+                {erro}
+              </div>
+            )}
+
             <button
               type="submit"
-              className="w-full rounded-md bg-brand-dark py-3 font-semibold text-brand-fg transition-colors hover:bg-brand"
+              disabled={carregando}
+              className="flex w-full items-center justify-center gap-2 rounded-md bg-brand-dark py-3 font-semibold text-brand-fg transition-colors hover:bg-brand disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              Entrar
+              {carregando ? (
+                <>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin">
+                    <circle cx="12" cy="12" r="9" strokeOpacity="0.25" />
+                    <path d="M12 3a9 9 0 0 1 9 9" strokeLinecap="round" />
+                  </svg>
+                  Entrando…
+                </>
+              ) : "Entrar"}
             </button>
           </form>
 

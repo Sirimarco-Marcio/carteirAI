@@ -51,7 +51,8 @@ interface OnboardingResult {
   usuarios: { id: string; nome: string; role: string }[];
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE  = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ---------------------------------------------------------------------------
 // Constantes
@@ -302,11 +303,23 @@ function PassoFamilia({
   setFamiliaName,
   membros,
   setMembros,
+  email,
+  setEmail,
+  senha,
+  setSenha,
+  confirmar,
+  setConfirmar,
 }: {
   familiaName: string;
   setFamiliaName: (v: string) => void;
   membros: Membro[];
   setMembros: React.Dispatch<React.SetStateAction<Membro[]>>;
+  email: string;
+  setEmail: (v: string) => void;
+  senha: string;
+  setSenha: (v: string) => void;
+  confirmar: string;
+  setConfirmar: (v: string) => void;
 }) {
   const [nome, setNome] = useState("");
   const [telegram, setTelegram] = useState("");
@@ -377,6 +390,54 @@ function PassoFamilia({
               placeholder="Ex.: Lucas, Maria…"
               required
             />
+            {/* Credenciais de acesso ao painel */}
+            <div className="rounded-md border border-line bg-surface p-3 flex flex-col gap-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.05em] text-muted">
+                Acesso ao painel (e-mail e senha)
+              </p>
+              <Input
+                label="E-mail"
+                type="email"
+                value={email}
+                onChange={setEmail}
+                placeholder="seu@email.com"
+                required
+              />
+              {email && !EMAIL_RE.test(email) && (
+                <p className="text-[11px] text-saida">E-mail inválido.</p>
+              )}
+              <Input
+                label="Senha"
+                type="password"
+                value={senha}
+                onChange={setSenha}
+                placeholder="Mínimo 8 caracteres"
+                required
+              />
+              {senha && senha.length < 8 && (
+                <p className="text-[11px] text-saida">Senha deve ter ao menos 8 caracteres.</p>
+              )}
+              <Input
+                label="Confirmar senha"
+                type="password"
+                value={confirmar}
+                onChange={setConfirmar}
+                placeholder="Repita a senha"
+                required
+              />
+              {confirmar && confirmar !== senha && (
+                <p className="text-[11px] text-saida">As senhas não coincidem.</p>
+              )}
+              {email && EMAIL_RE.test(email) && senha.length >= 8 && confirmar === senha && (
+                <div className="flex items-center gap-1.5">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1f7a5c" strokeWidth="2.5">
+                    <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  <p className="text-[11px] font-semibold text-entrada">Credenciais válidas</p>
+                </div>
+              )}
+            </div>
+
             <AppVinculoCard
               value={admin.appUserId}
               onChange={(v) => setAdminField("appUserId", v)}
@@ -1139,6 +1200,9 @@ export default function OnboardingPage() {
   const [membros, setMembros] = useState<Membro[]>([
     { id: 1, nome: "", appUserId: "", telegramChatId: "" },
   ]);
+  const [email, setEmail]       = useState("");
+  const [senha, setSenha]       = useState("");
+  const [confirmar, setConfirmar] = useState("");
   const [bancos, setBancos] = useState<Banco[]>([]);
   const [fontes, setFontes] = useState<FonteRenda[]>([]);
   const [dividas, setDividas] = useState<Divida[]>([]);
@@ -1175,6 +1239,12 @@ export default function OnboardingPage() {
   }
 
   const podePular = passo === 4; // dívidas é opcional
+
+  // Passo 1 só avança com credenciais válidas
+  const credenciaisValidas =
+    EMAIL_RE.test(email.trim()) &&
+    senha.length >= 8 &&
+    senha === confirmar;
 
   // -------------------------------------------------------------------------
   // Monta o payload e chama a API
@@ -1248,6 +1318,8 @@ export default function OnboardingPage() {
     const payload = {
       familia: { nome: familiaName.trim() || "Minha Família" },
       membros: membrosPayload,
+      admin_email: email.trim().toLowerCase(),
+      admin_senha: senha,
       contas: contasPayload.length > 0 ? contasPayload : undefined,
       fontes: fontesPayload.length > 0 ? fontesPayload : undefined,
       dividas: dividasPayload.length > 0 ? dividasPayload : undefined,
@@ -1360,6 +1432,12 @@ export default function OnboardingPage() {
             setFamiliaName={setFamiliaName}
             membros={membros}
             setMembros={setMembros}
+            email={email}
+            setEmail={setEmail}
+            senha={senha}
+            setSenha={setSenha}
+            confirmar={confirmar}
+            setConfirmar={setConfirmar}
           />
         )}
         {passo === 2 && <PassoContas bancos={bancos} setBancos={setBancos} />}
@@ -1429,7 +1507,9 @@ export default function OnboardingPage() {
                 <button
                   type="button"
                   onClick={avancar}
-                  className="flex items-center gap-1.5 rounded-md bg-brand-dark px-5 py-3 text-sm font-semibold text-brand-fg transition-colors hover:bg-brand focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-soft"
+                  disabled={passo === 1 && !credenciaisValidas}
+                  title={passo === 1 && !credenciaisValidas ? "Preencha e-mail e senha válidos para continuar" : undefined}
+                  className="flex items-center gap-1.5 rounded-md bg-brand-dark px-5 py-3 text-sm font-semibold text-brand-fg transition-colors hover:bg-brand focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-soft disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   Continuar
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

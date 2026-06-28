@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
+import bcrypt from "bcryptjs";
 
 /**
  * POST /api/onboarding — persiste a configuração inicial da família no Neon.
  *
  * Cria em transação única:
- *   familias → usuarios → instituicoes + contas → fontes_renda → dividas_creditos
- *
- * TODO (B2): adicionar gating via Neon Auth antes de expor em produção.
- * Por ora sem autenticação (fluxo de setup inicial — B1).
+ *   familias → usuarios → auth_credentials → instituicoes + contas → fontes_renda → dividas_creditos
  */
 
 export const runtime = "nodejs";
@@ -53,6 +51,8 @@ interface DividaPayload {
 interface OnboardingPayload {
   familia: { nome: string };
   membros: MembroPayload[];
+  admin_email: string;  // e-mail de acesso ao painel
+  admin_senha: string;  // senha em texto claro — será hasheada aqui
   contas?: ContaPayload[];
   fontes?: FontePayload[];
   dividas?: DividaPayload[];
@@ -91,6 +91,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const adminEmail = body.admin_email?.trim().toLowerCase();
+  if (!adminEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
+    return NextResponse.json({ erro: "E-mail inválido" }, { status: 422 });
+  }
+  if (!body.admin_senha || body.admin_senha.length < 8) {
+    return NextResponse.json(
+      { erro: "Senha deve ter no mínimo 8 caracteres" },
+      { status: 422 }
+    );
+  }
+
   const dbUrl = process.env.DATABASE_URL;
   if (!dbUrl) {
     return NextResponse.json(
@@ -120,6 +131,9 @@ export async function POST(req: NextRequest) {
     const adminMembro = membrosComId.find((m) => m.role === "admin")!;
     const adminId = adminMembro._id;
 
+    // Hash da senha fora da transação (operação CPU-intensiva)
+    const senhaHash = await bcrypt.hash(body.admin_senha, 10);
+
     // -------------------------------------------------------------------------
     // Monta lista de queries para a transação
     // -------------------------------------------------------------------------
@@ -133,7 +147,7 @@ export async function POST(req: NextRequest) {
       `
     );
 
-    // 2. Usuários
+    // 2. Usuários + credencial do admin
     for (const m of membrosComId) {
       const chatId = m.telegram_chat_id?.trim() || null;
       queries.push(
@@ -149,6 +163,14 @@ export async function POST(req: NextRequest) {
         `
       );
     }
+
+    // 2b. Credencial de acesso ao painel (só para o admin)
+    queries.push(
+      sql`
+        INSERT INTO auth_credentials (usuario_id, email, senha_hash)
+        VALUES (${adminId}::uuid, ${adminEmail}, ${senhaHash})
+      `
+    );
 
     // 3. Contas — para cada conta: cria instituicao + conta
     for (const c of body.contas ?? []) {
@@ -254,9 +276,16 @@ export async function POST(req: NextRequest) {
       { status: 201 }
     );
   } catch (e) {
+    const msg = String(e);
+    if (msg.includes("auth_credentials") && msg.includes("unique")) {
+      return NextResponse.json(
+        { erro: "E-mail já cadastrado" },
+        { status: 409 }
+      );
+    }
     console.error("[onboarding] erro ao persistir:", e);
     return NextResponse.json(
-      { erro: "Falha ao salvar no banco", detalhe: String(e) },
+      { erro: "Falha ao salvar no banco", detalhe: msg },
       { status: 500 }
     );
   }
