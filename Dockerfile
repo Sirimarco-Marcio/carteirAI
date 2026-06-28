@@ -8,10 +8,11 @@ LABEL maintainer="carteirAI" \
 # Variáveis de build
 ARG DEBIAN_FRONTEND=noninteractive
 
-# Dependências de sistema mínimas (psycopg usa libpq; openfortivpn instalado no host, não aqui)
+# Dependências de sistema mínimas (psycopg usa libpq; curl para healthcheck)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libpq-dev \
         gcc \
+        curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Diretório de trabalho
