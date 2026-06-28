@@ -29,7 +29,7 @@ export default function LoginPage() {
         <div className="w-full max-w-sm rounded-lg border border-line bg-surface p-7 shadow-float">
           <h1 className="font-display text-2xl font-semibold text-ink">Entrar</h1>
 
-          <form className="mt-6 space-y-4" action="/">
+          <form className="mt-6 space-y-4" action="/inicio">
             <div>
               <input
                 type="email"

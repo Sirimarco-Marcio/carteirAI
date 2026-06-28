@@ -24,7 +24,7 @@ function Icone({ nome, size = 22 }: { nome: string; size?: number }) {
 }
 
 const NAV = [
-  { href: "/", label: "Início", icon: "dashboard" },
+  { href: "/inicio", label: "Início", icon: "dashboard" },
   { href: "/transacoes", label: "Extrato", icon: "extrato" },
   { href: "/cartoes", label: "Cartões", icon: "cartoes" },
   { href: "/renda", label: "Renda", icon: "renda" },
@@ -32,7 +32,7 @@ const NAV = [
 ];
 
 function ativo(pathname: string, href: string): boolean {
-  return href === "/" ? pathname === "/" : pathname.startsWith(href);
+  return pathname.startsWith(href);
 }
 
 function AvatarEmoji({ size = 38 }: { size?: number }) {

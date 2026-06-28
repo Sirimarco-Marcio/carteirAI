@@ -202,4 +202,21 @@ daquele celular.
 - Tudo **responsivo** (desktop → mobile), acessível (foco visível, contraste AA), `reduced-motion`.
 - Números **sempre** em mono tabular alinhados à direita. Datas em PT-BR. Moeda BRL.
 - Sem clichês de dashboard: nada de número-gigante-com-gradiente como herói; herói = linha que respira.
+
+---
+
+## P10 — Notificações (a tela nova, sem design ainda) — prompt pronto pro Stitch
+
+*(Cole o Design System (1.4) antes.)*
+
+> Tela **Notificações** do carteirAI (Warm Ledger). É onde a família **revisa e aprova** o que o app
+> capturou + vê avisos. Duas seções:
+> **1. Pendentes de aprovação** — cartões, cada um com chip de categoria (colorido), estabelecimento,
+> "pessoa · conta", valor em mono à direita (vermelho saída / verde entrada) e dois botões: **Confirmar**
+> (marca escura) e **Ignorar** (cinza). Variante **possível duplicata**: selo ocre "⚠️ Parece repetida"
+> e botões "É a mesma" / "É nova".
+> **2. Avisos** — lista compacta (fatura vencendo, pix recebido), cada linha com ponto colorido
+> (não-lido = verde marca), título, detalhe e tempo ("há 1h").
+> Desktop: conteúdo centrado (~720px) ao lado da sidebar. Mobile: full-width com a tab bar embaixo.
+> Gere também as variantes **vazio** ("Tudo em dia, nada pra revisar"), **carregando** (skeleton) e **erro**.
 </content>

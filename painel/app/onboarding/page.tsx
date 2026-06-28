@@ -252,11 +252,11 @@ function PassoFamilia({
               required
             />
             <Input
-              label="ID do app (Copiar ID no app Notifier)"
+              label="ID do app (opcional)"
               value={admin.appUserId}
               onChange={(v) => setAdminField("appUserId", v)}
               placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-              hint="Abra o app Notifier → menu → Copiar ID. Deixe em branco para gerar automaticamente."
+              hint="Opcional. Abra o app Notifier (ele mostra um ID mesmo sem conta) → Copiar ID → cole aqui pra vincular este celular. Em branco: geramos um ID e você vincula depois."
             />
             <Input
               label="Chat do Telegram (opcional)"
@@ -954,7 +954,7 @@ function TelaSucesso({ resultado }: { resultado: OnboardingResult }) {
 
         <div className="mt-6 flex flex-col gap-3">
           <Link
-            href="/"
+            href="/inicio"
             className="flex w-full items-center justify-center gap-1.5 rounded-md bg-brand-dark px-5 py-3 text-sm font-semibold text-brand-fg transition-colors hover:bg-brand"
           >
             Ir para o painel
