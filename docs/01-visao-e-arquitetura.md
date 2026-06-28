@@ -1,5 +1,12 @@
 # 01 — Visão & Arquitetura
 
+> **⚠️ Atualizado pela refatoração (jun/2026).** O **transporte** (App→Telegram), a **fila**
+> (SQLite no Pi) e o **modelo de execução** descritos abaixo foram **substituídos**. Fonte da
+> verdade atual: **`docs/06-arquitetura-alvo.md`**. Resumo do novo desenho: app → HTTPS → API Route
+> na **Vercel** → **fila no Neon** (`fila_ingestao`); o **Pi é outbound-only** (polling 10min, dois
+> daemons); **Telegram só para confirmações/comandos**. Painel web: `docs/07-painel-web.md`.
+> Defeitos que motivaram a mudança: `docs/05-analise-critica-arquitetura.md`.
+
 ## 1. Visão Geral
 Sistema event-driven de gestão financeira familiar. Transações são capturadas via
 notificações móveis (app Android próprio) e entrada manual (Telegram), processadas

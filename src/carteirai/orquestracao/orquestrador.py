@@ -73,20 +73,24 @@ class Orquestrador:
                     chamadas += 1
                     break  # abandona este provider, vai pro próximo
 
-                # Data programática
-                extraida.data_hora = item.criada_em
+                # Data programática: usa posted_at quando presente, fallback para criada_em
+                momento = getattr(item, "data_hora", None) or item.criada_em
+                extraida.data_hora = momento
 
-                # Auditoria
+                # Auditoria — ignora falha de data (data_hora vem do posted_at,
+                # não do texto bruto); considera valor, tipo e forma.
                 res = auditar(item.texto_bruto, extraida)
-                falhas_valor = [f for f in res.falhas if "valor" in f.lower()]
+                falhas_relevantes = [
+                    f for f in res.falhas if not f.lower().startswith("data")
+                ]
 
-                # Caso: valor OK
-                if not falhas_valor:
+                # Caso: sem falhas relevantes (valor/tipo/forma OK)
+                if not falhas_relevantes:
                     dup = self._dedup.soft_match(
                         item.usuario_id,
                         extraida.valor,
                         extraida.estabelecimento,
-                        item.criada_em,
+                        momento,
                     )
                     self._repo.salvar(item.usuario_id, h, extraida, dup)
                     self._fila.marcar(item.id, "CONCLUIDO")
@@ -98,12 +102,12 @@ class Orquestrador:
                     )
 
                 # Caso: não-transação (sem números monetários no texto)
-                if any("sem números" in f for f in falhas_valor):
+                if any("sem números" in f for f in falhas_relevantes):
                     self._fila.marcar(item.id, "CONCLUIDO")
                     return ResultadoProcessamento(status="IGNORADA", tentativas=chamadas)
 
-                # Caso: divergência com número — feedback para próxima tentativa
-                falhas = falhas_valor
+                # Caso: divergência de valor/tipo/forma — feedback para próxima tentativa
+                falhas = falhas_relevantes
 
         # 5. Esgotou tudo
         self._fila.marcar(item.id, "ERRO")

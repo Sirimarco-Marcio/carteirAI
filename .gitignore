@@ -25,3 +25,11 @@ node_modules/
 
 # Binários Android
 *.apk
+
+# Artefatos/temporários fora de escopo do repo
+avatar.zip
+stitch_preview/
+test_mcp.py
+# ~9MB de telas de referência do Stitch (local; design já refletido em docs/07)
+stitch/
+.agents/

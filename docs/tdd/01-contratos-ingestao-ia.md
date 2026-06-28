@@ -101,6 +101,37 @@ ResultadoAuditoria: { ok: bool, falhas: list[str] }
 | AUD-05 | valor com separador de milhar `1.299,00` | `auditar` | `ok=True` |
 | AUD-06 | texto sem valor algum | `auditar` | `ok=False` |
 
+### Extensão: confirmação de `tipo` e `forma` por regex (AUD-07..13)
+> Decisão Chunk B (`docs/06`): a IA extrai `tipo`/`forma`, mas um **regex determinístico** confirma.
+> **Conservador:** só acusa falha quando o texto evidencia **exatamente uma** categoria e ela
+> **contradiz** a extraída. Texto sem pista (ou ambíguo, com pistas de +de uma) → **não acusa**
+> (confia na IA). Não altera o comportamento de valor/data (AUD-01..06 seguem válidos).
+
+Palavras-chave (case-insensitive), por categoria evidenciada no texto:
+- **tipo=entrada:** "você recebeu", "recebeu", "recebido", "recebida", "depósito", "deposito",
+  "creditado", "crédito em conta", "entrada de".
+- **tipo=saida:** "compra", "você pagou", "pagou", "pagamento", "saque", "você enviou", "enviou",
+  "débito de", "debitado", "gasto".
+- **forma=credito:** "no crédito", "cartão de crédito", "compra no crédito", "parcelado",
+  "parcelas", "fatura". *(NÃO usar "crédito" sozinho — colide com "crédito em conta", que é entrada.)*
+- **forma=debito:** "no débito", "cartão de débito", "débito automático", "compra no débito".
+- **forma=pix:** "pix".
+- **forma=dinheiro:** "dinheiro", "espécie", "especie".
+
+Regra: para `tipo` (e idem `forma`), monte o conjunto de categorias evidenciadas. Se houver
+**exatamente uma** e ela for **diferente** da extraída → falha mencionando "tipo" (ou "forma").
+Zero ou mais de uma categoria evidenciada → sem falha.
+
+| ID | Given | When | Then |
+| --- | --- | --- | --- |
+| AUD-07 | texto "você recebeu R$ 100 em 20/06" (entrada), extraída `tipo=saida` | `auditar` | `ok=False`, falha menciona "tipo" |
+| AUD-08 | texto "Compra de R$ 50 em 20/06" (saida), extraída `tipo=entrada` | `auditar` | `ok=False`, falha menciona "tipo" |
+| AUD-09 | texto sem pista de tipo ("Lançamento R$ 50 em 20/06"), extraída `tipo=saida` | `auditar` | sem falha de "tipo" |
+| AUD-10 | texto "compra no crédito R$ 50 em 20/06", extraída `forma=debito` | `auditar` | `ok=False`, falha menciona "forma" |
+| AUD-11 | texto "Pix de R$ 50 em 20/06", extraída `forma=credito` | `auditar` | `ok=False`, falha menciona "forma" |
+| AUD-12 | texto sem pista de forma, extraída `forma=pix` | `auditar` | sem falha de "forma" |
+| AUD-13 | texto "compra no crédito de R$ 50 em 20/06", extraída `tipo=saida` `forma=credito` | `auditar` | `ok=True` (tudo confere) |
+
 ---
 
 ## ORQ — Orquestração (LangGraph) — fluxo A+B end-to-end (com fakes)
@@ -121,10 +152,15 @@ class Orquestrador:
    - repetir até `max_tentativas` vezes:
      - `extraida = await provider.extrair(texto, feedback=falhas)` — na 1ª, `feedback=None`.
        - se lançar `LLMError` → **abandona este provider** e vai pro próximo (não conta como divergência).
-     - `res = auditar(texto, extraida)`:
-       - **ok** → soft-match? define `possivel_duplicata`; persiste `PENDENTE_APROVACAO`; fila `CONCLUIDO`. **Fim.**
-       - falha por **ausência de número** (não é transação) → `IGNORADA` na hora (**não** retenta, **não** chama outro provider); fila `CONCLUIDO`. **Fim.**
-       - falha por **divergência** (há número, mas o valor não bate) → guarda `res.falhas` como `feedback` e repete (reflexão).
+     - `res = auditar(texto, extraida)`. **Falhas de "data" são ignoradas** (a `data_hora` vem do
+       `posted_at`, não do texto — ver `docs/06` A.4). Considere só as **falhas relevantes**
+       (valor, tipo, forma):
+       - **sem falhas relevantes** → soft-match? define `possivel_duplicata`; persiste
+         `PENDENTE_APROVACAO`; fila `CONCLUIDO`. **Fim.**
+       - falha por **ausência de número** (não é transação) → `IGNORADA` na hora (**não** retenta,
+         **não** chama outro provider); fila `CONCLUIDO`. **Fim.**
+       - falha por **divergência** (valor que não bate, **ou** `tipo`/`forma` que o texto contradiz)
+         → guarda as falhas relevantes como `feedback` e repete (reflexão).
 3. Esgotou todos os providers/tentativas → `ERRO` (`motivo_erro` preenchido), **não persiste** transação; fila `ERRO`; vai pro humano.
 
 > Teto de custo: ≤ `max_tentativas` chamadas por provider. `IGNORADA` e `DUPLICADA` nunca gastam retry.
@@ -145,3 +181,11 @@ class Orquestrador:
 | ORQ-11 | **fallback por erro**: principal lança `LLMError`, fallback acerta na 1ª | `processar` | `PENDENTE_APROVACAO` via fallback; principal não consome todas as tentativas (abandonado no erro) |
 | ORQ-12 | texto **sem valor** (não é transação) | `processar` | status `IGNORADA`; `FakeLLM.chamadas == 1` (sem retry); fila `CONCLUIDO`; transação não persistida |
 | ORQ-13 | reflexão desligada (`max_tentativas=1`), divergência, sem fallback | `processar` | status `ERRO` na 1ª falha (comportamento legado, sem reflexão) |
+| ORQ-14 | texto evidencia `tipo=entrada` ("você recebeu…"); principal extrai `tipo=saida` na 1ª e `tipo=entrada` na 2ª | `processar` | `PENDENTE_APROVACAO`; `chamadas==2`; a 2ª chamada recebeu `feedback` contendo "tipo" |
+| ORQ-15 | texto evidencia `forma=credito` ("compra no crédito…"); principal extrai `forma=debito` na 1ª e `forma=credito` na 2ª | `processar` | `PENDENTE_APROVACAO`; `chamadas==2`; `feedback` da 2ª contém "forma" |
+| ORQ-16 | divergência de `tipo` persiste e esgota tentativas, sem fallback | `processar` | status `ERRO`, **não persiste** (tipo é tratado como divergência, igual a valor) |
+| ORQ-17 | texto sem pista de tipo/forma, valor confere (caso atual) | `processar` | `PENDENTE_APROVACAO` (a extensão de tipo/forma não introduz falsos positivos) |
+| ORQ-18 | item possui `data_hora` (posted_at) **≠** `criada_em` | `processar` | a transação salva usa `data_hora` (posted_at) como momento — não `criada_em`. Item sem `data_hora` (legado) usa `criada_em`. |
+
+> **Nota (data):** o auditor ainda reporta falha de "data" (AUD-03), mas o orquestrador a **ignora**
+> — a data efetiva vem do `posted_at` do item, não do texto da notificação.

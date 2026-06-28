@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  background-color: theme("colors.paper");
+  color: theme("colors.ink");
+}
+
+body {
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+@layer components {
+  /* Valores monetários: mono com algarismos tabulares, sempre alinhados à direita em tabelas. */
+  .money {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+
+  .label-caps {
+    font-family: var(--font-body);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: theme("colors.muted");
+  }
+
+  /* Sparkline "respirando": preenchimento suave de brand-soft → transparente. */
+  .breathing-fill {
+    background: linear-gradient(180deg, rgba(30, 111, 92, 0.18) 0%, rgba(30, 111, 92, 0) 100%);
+  }
+}
+
+/* Respeita preferência de menos movimento. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,5 +1,11 @@
 # 03 — Fluxos de Dados (Workflows)
 
+> **⚠️ Atualizado pela refatoração (jun/2026).** O **transporte da notificação** não passa mais pelo
+> Telegram: app → HTTPS → API Route na Vercel → **fila no Neon**; o Pi faz polling de saída. Telegram
+> fica só para **confirmações/comandos/entrada manual**. Não há **trigger** no banco — recálculo de
+> saldo/fatura/competência é **lógica de aplicação** (ver Fluxo C, corrigido abaixo). Fonte da
+> verdade: **`docs/06-arquitetura-alvo.md`**.
+
 ## Fluxo A+B — Ingestão, Deduplicação e Processamento
 
 ```mermaid
@@ -62,7 +68,7 @@ sequenceDiagram
     U->>TG: clica [Sim]
     TG->>PI: callback_query (polling)
     PI->>DB: UPDATE transação status=CONFIRMADA
-    DB->>DB: trigger recalcula saldo / fatura / competência
+    PI->>DB: recalcula saldo / fatura / competência (lógica de aplicação, NÃO trigger)
     PI->>TG: "✅ Confirmado"
 ```
 > `[Não]` → status `IGNORADA`. `[Editar]` → abre lançamento manual guiado para corrigir

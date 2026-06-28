@@ -30,6 +30,18 @@
 | RES-02 | Reinício do worker com itens PROCESSANDO órfãos | reabilita itens presos (timeout → volta PENDENTE) |
 | RES-03 | App Android offline acumula e envia em lote | todos processados, dedup mantém consistência |
 
+## Pipeline do worker (arquitetura nova — `docs/06`)  `INT-W-*`
+> Liga de verdade: `FilaIngestao` (SQLite) + `Orquestrador` real + `Auditor` + `NotificadorTelegram`
+> + `WorkerIngestao`. Fakes só nas bordas: `FakeLLM` (extração), `FakeTransacaoRepo` (Neon),
+> `FakeTelegram` + `FakeUsuarioRepo` (Telegram). Executa `await worker.tick()`.
+
+| ID | Cenário | Verifica |
+| --- | --- | --- |
+| INT-W-01 | notificação válida nova (texto com valor; LLM extrai coerente) | transação salva no repo (`salvos`), item da fila vira `CONCLUIDO`, **1 aprovação** enviada ao chat do dono com botões Sim/Não/Editar |
+| INT-W-02 | duplicata exata (hash já no repo) | item da fila vira `DUPLICADA`, **nada salvo**, **nada enviado** |
+| INT-W-03 | não-transação (texto sem valor) | item da fila vira `CONCLUIDO` (IGNORADA), **nada salvo**, **nada enviado** (silêncio) |
+| INT-W-04 | soft-match (transação similar recente no repo) | transação salva com `possivel_duplicata`, aprovação enviada com botões **"É a mesma"/"É nova"** |
+
 ## Critérios de pronto (Fase 2)
 - Todos INT-* e RES-* verdes contra DB real.
 - Nenhum teste depende de Gemini/Telegram reais.

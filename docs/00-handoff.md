@@ -36,9 +36,9 @@ alimentação/dia + transporte/dia, variável por dias trabalhados).
    janela) = **sempre** vai pra confirmação especial no Telegram — nunca descarta uma
    2ª compra legítima sem perguntar.
 2. **Conta conjunta:** fora de escopo. Aprovação sempre vai pra quem fez o gasto.
-3. **Categorias (lista autorizada):** Alimentação, Mercado, Transporte, Moradia, Saúde,
-   Educação, Lazer, Assinaturas, Vestuário, Lanche na rua, Presentes, Transferências,
-   Investimentos/Reserva, Outros.
+3. **Categorias (lista autorizada — 15, espelha `db/seed.sql`):** Alimentação, Mercado, Transporte,
+   Moradia, Saúde, Educação, Lazer, Assinaturas, Vestuário, Lanche na rua, Presentes, **Pix**,
+   Transferências, Investimentos/Reserva, Outros. *(Pix virou categoria própria — decisão D7.)*
 
 ## Próxima fase
 Configurar o Pi (acesso SSH já fornecido — credenciais a rotacionar) e implementar

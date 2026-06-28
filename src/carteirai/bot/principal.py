@@ -35,9 +35,6 @@ from telegram.ext import (
 from carteirai.dedup.dedup import hash_exato
 from carteirai.dominio.dtos import ItemFila
 from carteirai.ia.base_llm import resolver_llm
-from carteirai.infra.neon_repos import (
-    ConsultaFinanceiraNeon, TransacaoRepoNeon, UsuarioRepoNeon,
-)
 from carteirai.orquestracao.orquestrador import Orquestrador
 from carteirai.telegram.comandos import DespachanteComandos
 
@@ -50,7 +47,8 @@ from carteirai.financeiro.renda import ServicoRenda
 from carteirai.financeiro.faturas import ServicoFaturas
 from carteirai.infra.sqlalchemy_repos import (
     SqlAlchemyContaRepo, SqlAlchemyTransacaoRepo, SqlAlchemyFaturaRepo,
-    SqlAlchemyFonteRepo, SqlAlchemyRegistroDiaRepo
+    SqlAlchemyFonteRepo, SqlAlchemyRegistroDiaRepo,
+    SqlAlchemyUsuarioRepo, SqlAlchemyTransacaoIngestaoRepo, SqlAlchemyConsultaFinanceira,
 )
 from carteirai.fila.fila import Fila
 
@@ -66,8 +64,67 @@ if _DATABASE_URL.startswith("postgresql://"):
 engine = create_engine(_DATABASE_URL)
 SessionLocal = scoped_session(sessionmaker(bind=engine))
 
-_ur = UsuarioRepoNeon()
-_tr = TransacaoRepoNeon()
+class _UsuarioRepoSessao:
+    """UsuarioRepo via SQLAlchemy, abrindo uma sessão (pooled) por chamada."""
+
+    def chat_id_de(self, usuario_id):
+        s = SessionLocal()
+        try:
+            return SqlAlchemyUsuarioRepo(s).chat_id_de(usuario_id)
+        finally:
+            SessionLocal.remove()
+
+    def usuario_de_chat(self, chat_id):
+        s = SessionLocal()
+        try:
+            return SqlAlchemyUsuarioRepo(s).usuario_de_chat(chat_id)
+        finally:
+            SessionLocal.remove()
+
+
+class _TransacaoRepoSessao:
+    """Porta do Orquestrador (hash_existe/transacoes/salvar) via SQLAlchemy, sessão por chamada."""
+
+    def hash_existe(self, hash):
+        s = SessionLocal()
+        try:
+            return SqlAlchemyTransacaoIngestaoRepo(s).hash_existe(hash)
+        finally:
+            SessionLocal.remove()
+
+    def transacoes(self, usuario_id):
+        s = SessionLocal()
+        try:
+            return SqlAlchemyTransacaoIngestaoRepo(s).transacoes(usuario_id)
+        finally:
+            SessionLocal.remove()
+
+    def salvar(self, usuario_id, hash, transacao, possivel_duplicata):
+        s = SessionLocal()
+        try:
+            return SqlAlchemyTransacaoIngestaoRepo(s).salvar(
+                usuario_id, hash, transacao, possivel_duplicata
+            )
+        finally:
+            SessionLocal.remove()
+
+    def buscar(self, transacao_id):
+        s = SessionLocal()
+        try:
+            return SqlAlchemyTransacaoIngestaoRepo(s).buscar(transacao_id)
+        finally:
+            SessionLocal.remove()
+
+    def atualizar_status(self, transacao_id, status):
+        s = SessionLocal()
+        try:
+            return SqlAlchemyTransacaoIngestaoRepo(s).atualizar_status(transacao_id, status)
+        finally:
+            SessionLocal.remove()
+
+
+_ur = _UsuarioRepoSessao()
+_tr = _TransacaoRepoSessao()
 
 _db_path = os.environ.get("FILA_DB_PATH", os.environ.get("CARTEIRAI_DB", "/data/fila.db"))
 # Fila Real (SQLite) usada pelo Worker
@@ -136,7 +193,7 @@ async def cmd_geral(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         faturas_svc = ServicoFaturas(fatura_repo, conta_repo, transacao_repo)
         
         despachante = DespachanteComandos(
-            consultas=ConsultaFinanceiraNeon(usuario_id),
+            consultas=SqlAlchemyConsultaFinanceira(session, usuario_id),
             renda_svc=renda_svc,
             transacao_svc=transacao_svc,
             faturas_svc=faturas_svc
