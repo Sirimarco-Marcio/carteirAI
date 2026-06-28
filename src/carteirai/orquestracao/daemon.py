@@ -17,6 +17,7 @@ import asyncio
 import logging
 import os
 
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import scoped_session, sessionmaker
 
@@ -60,6 +61,7 @@ def construir_worker(engine, session_factory, token: str, provider: str, fallbac
 
 
 async def loop() -> None:
+    load_dotenv()  # carrega .env (lida com & e caracteres especiais; sem shell sourcing)
     dsn = _normalizar_dsn(os.environ["DATABASE_URL"])
     token = os.environ["TELEGRAM_BOT_TOKEN"]
     provider = os.getenv("LLM_PROVIDER", "gemini")
